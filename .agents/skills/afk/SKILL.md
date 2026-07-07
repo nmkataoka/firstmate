@@ -148,7 +148,11 @@ Classify each wake this way:
   `FM_STALE_ESCALATE_SECS` (default 240s), housekeeping escalates it as a
   possible wedge. This bounds wedge-detection latency to the threshold plus a
   tick: a delay, never a loss. Healthy crewmates are autonomous and do not wait
-  on firstmate mid-task.
+  on firstmate mid-task. An acked terminal park (`bin/fm-stale-ack.sh`, via the
+  shared `stale_is_acked` policy) self-handles instead of escalating:
+  housekeeping drops its stale marker so it never ages into a false wedge, and
+  the catch-all scan skips re-escalating the exact acked line; a new status
+  append invalidates the ack and normal handling resumes.
 - `heartbeat` -> self-handle. The daemon runs its own cheap bash fleet scan
   every `FM_HEARTBEAT_SCAN_SECS` (default 300s) as the catch-all for a
   captain-relevant status line the per-wake classifier might miss.
