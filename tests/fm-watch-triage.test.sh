@@ -131,7 +131,8 @@ test_stale_is_acked_classifier() {
 }
 
 # bin/fm-stale-ack.sh records the status log's current last line, refuses a task
-# with no meta or no status line, and --clear removes the marker.
+# with no meta or no status line, --clear removes the marker, and any other
+# extra argument is rejected instead of silently re-acking.
 test_stale_ack_helper() {
   local dir state out
   dir=$(make_case stale-ack-helper); state="$dir/state"
@@ -150,7 +151,13 @@ test_stale_ack_helper() {
   printf 'window=sess:fm-park-h2\nkind=ship\n' > "$state/park-h2.meta"
   FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" park-h2 >/dev/null 2>&1 \
     && fail "helper acked a task with no status line"
-  pass "fm-stale-ack.sh records the last status line, refuses meta-less/status-less tasks, and --clear removes it"
+  printf 'done: PR https://x/y/pull/5\n' > "$state/park-h2.status"
+  FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" park-h2 --claer >/dev/null 2>&1 \
+    && fail "helper accepted an unrecognized second argument"
+  [ ! -e "$state/park-h2.stale-ack" ] || fail "unrecognized argument still recorded an ack"
+  FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" park-h2 --clear extra >/dev/null 2>&1 \
+    && fail "helper accepted trailing arguments after --clear"
+  pass "fm-stale-ack.sh records the last status line, refuses meta-less/status-less tasks and bad arguments, and --clear removes it"
 }
 
 test_scan_captain_relevant_statuses_classifier() {

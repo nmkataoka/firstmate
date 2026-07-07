@@ -27,7 +27,8 @@ usage() { grep '^# Usage' -A1 "$0" | sed 's/^# //'; }
 ID=$1
 ACK="$STATE/$ID.stale-ack"
 
-if [ "${2:-}" = "--clear" ]; then
+if [ $# -ge 2 ]; then
+  { [ $# -eq 2 ] && [ "$2" = "--clear" ]; } || { usage >&2; exit 2; }
   rm -f "$ACK"
   echo "cleared: $ID stale-ack removed (normal stale triage resumes)"
   exit 0
