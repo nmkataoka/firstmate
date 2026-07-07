@@ -82,6 +82,9 @@ Natural language is acceptable if uncertain.
 | Interrupt | single Escape |
 | Skill invocation | `/<skill>` (e.g. `/no-mistakes`) |
 
+While parked between harness-tracked background subprocesses (e.g. parallel reviewer agents it launched), a claude pane shows NO `esc to interrupt` busy footer, but renders positive working evidence anyway: a spinner line ending `· N shell(s) still running` and/or a footer segment `· N shell[s][, N monitor[s]]` followed by `↓ to manage` (verified 2026-07-06, Claude Code 2.1.201).
+`bin/fm-crew-state.sh` counts those markers as pane working evidence for harness=claude only, so the watcher absorbs that span's no-verb wakes instead of surfacing them.
+
 First launch in a fresh worktree, or first ever on a machine, may show a trust or bypass-permissions confirmation.
 After every spawn, peek the pane within about 20 seconds.
 If such a dialog is showing, accept it with `bin/fm-send.sh <window> --key Enter`, or the choice the dialog requires, and verify the brief started processing.
