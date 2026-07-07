@@ -76,6 +76,59 @@ test_no_mistakes_dod_wording() {
   pass "fm-brief.sh: no-mistakes DOD wording avoids the apostrophe regression"
 }
 
+# --review=<tier> must put the post-implementation review contract into a
+# direct-PR ship brief: the pinned tier, the absolute path to the tracked crew
+# procedure, and the review-shaped done line, all resolvable without any
+# firstmate-private data/ file.
+test_review_flag_direct_pr() {
+  local home id brief
+  home="$TMP_ROOT/review-home"
+  write_registry "$home"
+  id="brief-review-c1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --review=full >/dev/null 2>&1 \
+    || fail "fm-brief.sh --review=full on a direct-PR project should succeed"
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "review brief was not scaffolded"
+  assert_grep "# Post-implementation review" "$brief" "review brief missing the review section"
+  assert_grep "TIER=\`full\`" "$brief" "review brief does not pin the chosen tier"
+  assert_grep "$ROOT/crew/review/review-procedure.md" "$brief" \
+    "review brief does not point at the tracked crew procedure by absolute path"
+  assert_grep "FM=\`$ROOT\`" "$brief" "review brief does not state the FM root for the procedure"
+  assert_grep "one-line note of any rejected findings" "$brief" \
+    "review brief lost the review-shaped done report"
+  assert_no_grep "EOF" "$brief" "review brief leaked a heredoc EOF marker"
+
+  id="brief-review-c2"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --review=simple >/dev/null 2>&1 \
+    || fail "fm-brief.sh --review=simple on a direct-PR project should succeed"
+  assert_grep "TIER=\`simple\`" "$home/data/$id/brief.md" "simple-tier brief does not pin its tier"
+  pass "fm-brief.sh: --review briefs carry tier, procedure path, and done contract"
+}
+
+# --review must refuse everything outside its verified surface: a missing or
+# invalid tier, non-ship briefs, and ship modes the flow was not piloted on -
+# and a refusal must not leave a half-made data/<id>/ dir behind.
+test_review_flag_refusals() {
+  local home status
+  home="$TMP_ROOT/review-refuse-home"
+  write_registry "$home"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d1 direct-proj --review >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "bare --review (no tier) should be refused"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d5 direct-proj --review= >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "--review= with an empty tier should be refused, not silently ignored"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d2 direct-proj --review=fancy >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "an unknown review tier should be refused"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d3 direct-proj --scout --review=simple >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "--review on a scout brief should be refused"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d4 nomistakes-proj --review=simple >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "--review on a non-direct-PR project should be refused"
+  assert_absent "$home/data/brief-review-d4" "mode refusal left a stray data/<id>/ dir behind"
+  pass "fm-brief.sh: --review refusals cover tier, kind, and delivery mode"
+}
+
 test_script_parses
 test_ship_modes_generate_clean_briefs
 test_no_mistakes_dod_wording
+test_review_flag_direct_pr
+test_review_flag_refusals

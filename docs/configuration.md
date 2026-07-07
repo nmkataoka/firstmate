@@ -137,6 +137,15 @@ If no dispatch rule fits, firstmate uses the dispatch profile `default` when pre
 Because the spawn backstop is gated by file presence, any fallback path after a missing match, validation error, or missing `jq` still passes a resolved harness explicitly until the file is fixed or removed.
 Secondmate homes inherit this file from the primary, so a secondmate's own crewmates apply the same dispatch profile behavior.
 
+## Post-implementation review (crew/review/, config/review.env)
+
+`crew/review/` holds the tracked crew-facing procedure and prompt files for the post-implementation dual-review workflow (claude + codex reviewers over a PR); generated ship briefs point crewmates at them by absolute path via `bin/fm-brief.sh --review=<full|simple>`, which is verified for direct-PR projects only.
+Firstmate chooses the tier at intake with the `pr-review-dispatch` skill; the scaffold only carries the choice.
+`bin/fm-review-launch.sh` owns the verified reviewer launch commands and per-tier prompts, and reads the optional local, gitignored `config/review.env` for reviewer models, efforts, launch flags, and per-repo guideline links (key reference in the script header).
+An absent `config/review.env` means the pilot-verified defaults apply.
+See [`docs/examples/review.env`](examples/review.env) for a starting point to copy into local `config/review.env`.
+`config/review.env` is per-home and not in the inheritable config set today; a secondmate home without its own copy uses the defaults.
+
 ## Toolchain
 
 On session start the first mate detects what its required toolchain is missing or too old (tmux, node, gh, treehouse with durable lease support, no-mistakes v1.31.2 or newer, gh-axi, chrome-devtools-axi, lavish-axi), lists it with the exact install commands, and installs only after you say go.

@@ -142,6 +142,8 @@ The `data/secondmates.md` line schema and the secondmate environment variables a
 
 `data/projects.md` records each project's delivery mode and optional `+yolo` autonomy flag.
 `no-mistakes` projects run the full validation pipeline, `direct-PR` projects open PRs without that pipeline, and `local-only` projects stay local until firstmate performs an approved fast-forward merge.
+A `direct-PR` ship task can optionally carry a post-implementation dual review: `bin/fm-brief.sh --review=<full|simple>` pins a firstmate-chosen tier in the brief, and the crewmate launches independent claude and codex reviewers over its PR through `bin/fm-review-launch.sh`, then triages, fixes, re-reviews, and runs a cleanup pass per the tracked procedure in `crew/review/` before reporting done.
+Reviewer models, efforts, launch flags, and guideline links come from the local `config/review.env` described in [configuration.md](configuration.md), with pilot-verified defaults when the file is absent.
 Review diffs go through `bin/fm-review-diff.sh`, which refreshes the authoritative base and, when task meta records `pr=`, compares against the reachable recorded `pr_head=` or a freshly fetched `refs/pull/<n>/head` before falling back to the local branch with a warning.
 For target project repos shipped through their own no-mistakes pipeline, commits under `.no-mistakes/evidence/` are the pipeline's PR-viewable validation evidence and are expected to stay in the crew branch until the evidence-hosting design changes.
 The firstmate repo itself is the exception: its `.no-mistakes/` directory is local state, stays gitignored, and is rejected by CI if tracked.
