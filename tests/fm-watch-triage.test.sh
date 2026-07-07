@@ -877,6 +877,45 @@ test_beacon_stays_fresh_while_absorbing() {
   pass "the liveness beacon stays fresh while the watcher absorbs benign wakes (fm-guard never false-alarms)"
 }
 
+# --- beacon is stamped at fire time ------------------------------------------
+# Regression for the 2026-07-07 incident: the per-iteration beacon touch happens
+# at the TOP of the loop, and every fire path exits at the END of the same
+# iteration, so a machine-sleep window landing between the touch and the fire
+# (e.g. straddling the signal-grace linger) left the beacon 734s stale at a
+# perfectly normal fire - tripping fm-guard.sh's WATCHER DOWN banner during the
+# very handling turn the guard grace was meant to cover. wake() must re-stamp
+# the beacon on exit so a fire itself certifies liveness. Simulated here by
+# backdating the beacon while the watcher sits in its grace sleep (the same
+# no-touch window a real system sleep would freeze).
+test_beacon_stamped_at_fire() {
+  local dir state fakebin out status_file pid i m now
+  dir=$(make_case beacon-stamped-at-fire); state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"
+  status_file="$state/task.status"
+  printf 'needs-decision: pick A or B\n' > "$status_file"
+  # A 3s grace linger gives the backdate below a wide window between the
+  # loop-top beacon touch and the fire (watch_bg pins grace to 1s, too narrow).
+  PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=3 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  # Wait for the loop-top beacon touch, so the backdate below lands strictly
+  # after it (inside the grace linger, before the fire).
+  i=0
+  while [ "$i" -lt 30 ] && [ ! -e "$state/.last-watcher-beat" ]; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  [ -e "$state/.last-watcher-beat" ] || { reap "$pid"; fail "watcher never touched the beacon"; }
+  sleep 0.5
+  touch -t 202001010000 "$state/.last-watcher-beat"
+  wait_for_exit "$pid" 60 || fail "watcher did not fire for an actionable signal while testing the fire-time beacon stamp"
+  grep -F "signal: $status_file" "$out" >/dev/null || fail "watcher did not print the actionable signal reason"
+  m=$(file_mtime "$state/.last-watcher-beat")
+  now=$(date +%s)
+  [ -n "$m" ] || fail "beacon missing after the fire"
+  [ "$(( now - m ))" -lt 30 ] || fail "beacon was not re-stamped at fire time (age $(( now - m ))s; a pre-fire gap would false-trip fm-guard)"
+  pass "wake() stamps the liveness beacon at fire time (a touch-to-fire gap cannot leave it stale)"
+}
+
 # --- afk coherence: the daemon owns triage; the watcher does not double-triage ---
 
 test_afk_present_reverts_watcher_to_one_shot() {
@@ -927,4 +966,5 @@ test_triage_log_size_cap_accepts_spaced_wc_counts
 test_heartbeat_no_change_absorbed
 test_heartbeat_backstop_surfaces_unsurfaced_status
 test_beacon_stays_fresh_while_absorbing
+test_beacon_stamped_at_fire
 test_afk_present_reverts_watcher_to_one_shot
