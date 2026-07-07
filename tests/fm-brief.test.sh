@@ -115,6 +115,8 @@ test_review_flag_refusals() {
 
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d1 direct-proj --review >/dev/null 2>&1; status=$?
   expect_code 1 "$status" "bare --review (no tier) should be refused"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d5 direct-proj --review= >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "--review= with an empty tier should be refused, not silently ignored"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d2 direct-proj --review=fancy >/dev/null 2>&1; status=$?
   expect_code 1 "$status" "an unknown review tier should be refused"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d3 direct-proj --scout --review=simple >/dev/null 2>&1; status=$?

@@ -107,15 +107,19 @@ fi
 
 CLAUDE_CMD=(claude -p "$CLAUDE_PROMPT")
 if [ -n "${FM_REVIEW_CLAUDE_ARGS:-}" ]; then
+  set -f
   # shellcheck disable=SC2206  # deliberate word-splitting of the operator's flag string
   CLAUDE_CMD+=($FM_REVIEW_CLAUDE_ARGS)
+  set +f
 else
   CLAUDE_CMD+=(--model "$FM_REVIEW_CLAUDE_MODEL" --effort "$FM_REVIEW_CLAUDE_EFFORT" --permission-mode auto)
 fi
 CODEX_CMD=(codex exec)
 if [ -n "${FM_REVIEW_CODEX_ARGS:-}" ]; then
+  set -f
   # shellcheck disable=SC2206  # deliberate word-splitting of the operator's flag string
   CODEX_CMD+=($FM_REVIEW_CODEX_ARGS)
+  set +f
 else
   CODEX_CMD+=(--yolo --model "$FM_REVIEW_CODEX_MODEL" -c "model_reasoning_effort=\"$FM_REVIEW_CODEX_EFFORT\"")
 fi

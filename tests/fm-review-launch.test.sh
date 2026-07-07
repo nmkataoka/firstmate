@@ -70,6 +70,26 @@ EOF
   pass "fm-review-launch.sh: config/review.env overrides models, efforts, and guideline links"
 }
 
+# FM_REVIEW_*_ARGS strings are word-split but never glob-expanded: a flag value
+# containing * must survive literally even when the cwd holds matching files.
+test_args_override_no_glob_expansion() {
+  local cfg work out
+  cfg="$TMP_ROOT/cfg-glob"
+  work="$TMP_ROOT/work-glob"
+  mkdir -p "$cfg" "$work"
+  touch "$work/a.md" "$work/b.md"
+  cat > "$cfg/review.env" <<'EOF'
+FM_REVIEW_CLAUDE_ARGS='--allowed-tools *.md'
+FM_REVIEW_CODEX_ARGS='-c include="*.md"'
+EOF
+  out=$(cd "$work" && FM_CONFIG_OVERRIDE="$cfg" "$ROOT/bin/fm-review-launch.sh" simple 5 --print) \
+    || fail "print mode with glob-bearing ARGS overrides should exit 0"
+  assert_contains "$out" "--allowed-tools '*.md'" "claude ARGS glob was expanded against cwd files"
+  assert_contains "$out" "-c 'include=\"*.md\"'" "codex ARGS glob was expanded against cwd files"
+  assert_not_contains "$out" "a.md" "glob expansion leaked cwd filenames into the reviewer command"
+  pass "fm-review-launch.sh: ARGS overrides word-split without glob expansion"
+}
+
 # Launch mode: both reviewers run in parallel, stdout is captured verbatim to
 # round-numbered files that never clobber an earlier round.
 test_launch_captures_and_increments() {
@@ -141,6 +161,7 @@ test_argument_validation() {
 test_print_full_defaults
 test_print_simple_prompts
 test_config_overrides
+test_args_override_no_glob_expansion
 test_launch_captures_and_increments
 test_launch_failure_propagates
 test_argument_validation

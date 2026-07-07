@@ -52,8 +52,8 @@ for a in "$@"; do
   case "$a" in
     --scout) KIND=scout ;;
     --secondmate) KIND=secondmate ;;
+    --review|--review=) echo "error: --review requires a tier: --review=full or --review=simple" >&2; exit 1 ;;
     --review=*) REVIEW_TIER=${a#--review=} ;;
-    --review) echo "error: --review requires a tier: --review=full or --review=simple" >&2; exit 1 ;;
     *) POS+=("$a") ;;
   esac
 done
