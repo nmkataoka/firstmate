@@ -237,11 +237,20 @@ recorded_windows() {
 # Exit reporting a wake. Consecutive heartbeats with no other wake in between
 # mean an idle fleet, so the heartbeat interval backs off exponentially
 # (base * 2^streak, capped at HEARTBEAT_MAX); any real wake resets the cadence.
+# The fire also stamps the liveness beacon: the per-iteration touch happens at
+# the TOP of the loop, so at fire time the beacon otherwise carries the START of
+# the final iteration - and a machine sleep landing between that touch and this
+# exit (e.g. a macOS maintenance-sleep window straddling the signal-grace
+# linger) leaves the beacon stale by the whole sleep even though the watcher
+# fired normally, tripping fm-guard.sh's WATCHER DOWN banner during the very
+# handling turn the guard grace was meant to cover (observed 2026-07-07: 734s
+# stale beacon immediately after a normal fire).
 wake() {
   case "$1" in
     heartbeat*) echo $(( $(cat "$STATE/.heartbeat-streak" 2>/dev/null || echo 0) + 1 )) > "$STATE/.heartbeat-streak" ;;
     *) echo 0 > "$STATE/.heartbeat-streak" ;;
   esac
+  touch "$STATE/.last-watcher-beat"
   echo "$1"
   exit 0
 }
