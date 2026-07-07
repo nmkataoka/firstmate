@@ -382,6 +382,13 @@ classify_stale() {  # <window> <state>
   local win=$1 state=$2 task last seen
   task=$(window_to_task "$win" "$state")
   last=$(last_status_line "$state/$task.status")
+  # Acked terminal park (bin/fm-stale-ack.sh): the same suppression rule as the
+  # always-on watcher, via the shared stale_is_acked policy - self-handle while
+  # the acked line is still the log's last line; a NEW append invalidates it.
+  if stale_is_acked "$task" "$state"; then
+    printf 'self|stale acked (terminal park): %s' "$last"
+    return
+  fi
   if [ -n "$last" ] && status_is_captain_relevant "$last"; then
     # Dedupe against the signal path: if this status was already escalated
     # (seen marker matches), self-handle to avoid a duplicate in the digest.
@@ -650,6 +657,12 @@ housekeeping() {  # <state>
       # Window gone (task torn down): drop the marker, nothing to escalate.
       rm -f "$marker"; continue
     fi
+    # Acked terminal park: an acked task's marker (recorded by a self-handled
+    # stale wake, or left over from before the ack) must not age into a false
+    # "stale persisted" wedge; drop it while the ack is valid.
+    if stale_is_acked "$(window_to_task "$win" "$state")" "$state"; then
+      rm -f "$marker"; continue
+    fi
     stale_window_is_busy "$win" "$state"
     case "$?" in
       0) rm -f "$marker" ;;
@@ -670,6 +683,9 @@ housekeeping() {  # <state>
       [ -n "$f" ] || continue
       seen="$state/.subsuper-seen-status-$(_stale_key "$task")"
       [ "$(cat "$seen" 2>/dev/null || true)" = "$last" ] && continue
+      # An acked terminal line was already relayed; skip re-escalating that
+      # exact line, while a NEW append mismatches the ack and still escalates.
+      stale_is_acked "$task" "$state" && continue
       escalate_add "$state" "$(basename "$f"): $last (catch-all scan)"
       mark_status_seen "$state" "$task" "$last"
     done < <(scan_captain_relevant_statuses "$state")

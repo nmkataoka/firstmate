@@ -100,6 +100,58 @@ test_stale_terminal_escalates() {
   pass "stale + terminal status escalates immediately"
 }
 
+# Acked terminal park (bin/fm-stale-ack.sh): the daemon applies the same shared
+# stale_is_acked policy as the always-on watcher, so an acked parked task
+# self-handles instead of escalating, and a new status append invalidates it.
+test_classify_stale_acked_self() {
+  local dir state out
+  dir=$(make_supercase stale-acked)
+  state="$dir/state"
+  printf 'done: PR https://x/y/pull/9\n' > "$state/park-a1.status"
+  printf '%s' 'done: PR https://x/y/pull/9' > "$state/park-a1.stale-ack"
+  out=$(FM_STATE_OVERRIDE="$state" classify_stale "sess:fm-park-a1" "$state")
+  case "$out" in self\|*) ;; *) fail "acked terminal stale did not self-handle: $out" ;; esac
+  printf 'failed: merge conflict\n' >> "$state/park-a1.status"
+  out=$(FM_STATE_OVERRIDE="$state" classify_stale "sess:fm-park-a1" "$state")
+  case "$out" in escalate\|*) ;; *) fail "invalidated ack did not escalate the new terminal line: $out" ;; esac
+  pass "acked stale self-handles; a new status append invalidates the ack and escalates"
+}
+
+test_housekeeping_acked_stale_marker_dropped() {
+  local dir state fakebin win pane key
+  dir=$(make_supercase stale-acked-marker)
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  win="sess:fm-park-a2"
+  pane="$dir/pane.txt"
+  printf 'done: PR https://x/y/pull/2\n' > "$state/park-a2.status"
+  printf '%s' 'done: PR https://x/y/pull/2' > "$state/park-a2.stale-ack"
+  printf 'idle prompt $\n' > "$pane"
+  key=$(printf '%s' "park-a2" | tr ':/.' '___')
+  echo $(( $(date +%s) - 500 )) > "$state/.subsuper-stale-$key"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
+    FM_STATE_OVERRIDE="$state" FM_STALE_ESCALATE_SECS=240 housekeeping "$state"
+  [ -s "$state/.subsuper-escalations" ] && fail "acked parked task was escalated as a persisted wedge"
+  [ ! -e "$state/.subsuper-stale-$key" ] || fail "acked task's stale marker was not dropped"
+  pass "housekeeping drops an acked task's stale marker instead of wedge-escalating it"
+}
+
+test_housekeeping_catch_all_skips_acked() {
+  local dir state
+  dir=$(make_supercase scan-acked)
+  state="$dir/state"
+  printf 'done: PR https://x/y/pull/3\n' > "$state/park-a3.status"
+  printf '%s' 'done: PR https://x/y/pull/3' > "$state/park-a3.stale-ack"
+  rm -f "$state/.subsuper-last-scan"
+  FM_STATE_OVERRIDE="$state" housekeeping "$state"
+  [ -s "$state/.subsuper-escalations" ] && fail "catch-all scan escalated the exact acked line"
+  printf 'failed: merge conflict\n' >> "$state/park-a3.status"
+  rm -f "$state/.subsuper-last-scan"
+  FM_STATE_OVERRIDE="$state" housekeeping "$state"
+  [ -s "$state/.subsuper-escalations" ] || fail "catch-all scan missed a new captain-relevant line on an acked task"
+  pass "catch-all scan skips the exact acked line but escalates a new captain-relevant append"
+}
+
 test_housekeeping_persistent_stale_escalates() {
   local dir state fakebin win pane key
   dir=$(make_supercase stale-persistent)
@@ -974,6 +1026,9 @@ test_classify_terminal_signal_escalates
 test_classify_check_and_unknown_escalate
 test_stale_transient_self_records_marker
 test_stale_terminal_escalates
+test_classify_stale_acked_self
+test_housekeeping_acked_stale_marker_dropped
+test_housekeeping_catch_all_skips_acked
 test_housekeeping_persistent_stale_escalates
 test_housekeeping_resumed_stale_cleared
 test_housekeeping_herdr_persistent_stale_resolves_meta

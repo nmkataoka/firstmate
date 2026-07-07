@@ -410,6 +410,9 @@ test_local_only_fork_remote_allows() {
   write_meta "$case_dir" local-only ship
   wt_commit "$case_dir" "fix the thing"
   add_fork_with_pushed_branch "$case_dir"
+  # A leftover acknowledged-terminal marker (bin/fm-stale-ack.sh) must be
+  # removed with the task's other state files.
+  printf '%s' 'done: ready in branch fm/task-x1' > "$case_dir/state/task-x1.stale-ack"
 
   set +e
   run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
@@ -418,7 +421,8 @@ test_local_only_fork_remote_allows() {
 
   expect_code 0 "$rc" "fork-allow: teardown should succeed when HEAD is on a fork remote"
   ! grep -q REFUSED "$case_dir/stderr" || fail "fork-allow: teardown printed a REFUSED line"
-  pass "local-only worktree with HEAD on a fork remote is torn down (fix holds)"
+  [ ! -e "$case_dir/state/task-x1.stale-ack" ] || fail "fork-allow: teardown left the stale-ack marker behind"
+  pass "local-only worktree with HEAD on a fork remote is torn down (fix holds, stale-ack cleaned)"
 }
 
 test_teardown_prompts_tasks_axi_done_when_compatible() {
