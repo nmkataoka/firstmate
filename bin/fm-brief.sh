@@ -6,10 +6,17 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> [--scout]
+# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--review=<full|simple>]
 #        fm-brief.sh <task-id> --secondmate <project>...
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
+#   --review=<full|simple> (ship tasks in direct-PR mode only) has the brief carry
+#   the post-implementation dual-review contract: it pins the firstmate-chosen
+#   tier and points the crewmate at crew/review/review-procedure.md, which owns
+#   the crew-side procedure (bin/fm-review-launch.sh owns the launch mechanics).
+#   Firstmate decides the tier at intake (.agents/skills/pr-review-dispatch);
+#   the scaffold only carries it. Refused for scout/secondmate briefs and for
+#   ship modes the review flow has not been verified on.
 #   --secondmate writes a persistent secondmate charter. The project list
 #   is cloned into the secondmate home, while the natural-language scope
 #   tells the main firstmate when to route work there; routine churn stays in its own home;
@@ -39,15 +46,26 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 KIND=ship
+REVIEW_TIER=
 POS=()
 for a in "$@"; do
   case "$a" in
     --scout) KIND=scout ;;
     --secondmate) KIND=secondmate ;;
+    --review=*) REVIEW_TIER=${a#--review=} ;;
+    --review) echo "error: --review requires a tier: --review=full or --review=simple" >&2; exit 1 ;;
     *) POS+=("$a") ;;
   esac
 done
 ID=${POS[0]}
+
+if [ -n "$REVIEW_TIER" ]; then
+  [ "$KIND" = ship ] || { echo "error: --review applies only to ship briefs, not $KIND" >&2; exit 1; }
+  case "$REVIEW_TIER" in
+    full|simple) : ;;
+    *) echo "error: invalid review tier '$REVIEW_TIER' (use full or simple)" >&2; exit 1 ;;
+  esac
+fi
 
 BRIEF="$DATA/$ID/brief.md"
 [ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
@@ -171,10 +189,32 @@ read -r MODE _ <<EOF
 $("$FM_ROOT/bin/fm-project-mode.sh" "$REPO")
 EOF
 
+if [ -n "$REVIEW_TIER" ] && [ "$MODE" != direct-PR ]; then
+  echo "error: --review is verified only for direct-PR projects ($REPO resolves to mode $MODE)" >&2
+  rmdir "$DATA/$ID" 2>/dev/null || true
+  exit 1
+fi
+
 case "$MODE" in
   direct-PR)
     SETUP2=""
     RULE1='1. Never push to the default branch (push only your `fm/'"$ID"'` branch). Never merge a PR.'
+    if [ -n "$REVIEW_TIER" ]; then
+    DOD=$(cat <<EOF
+# Definition of done
+This project ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+The task is complete only when committed on your branch and the post-implementation review below is resolved.
+When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then run the review procedure below before reporting done.
+Do NOT run /no-mistakes. The captain reviews and merges the PR; firstmate relays it.
+
+# Post-implementation review
+Firstmate has set the review tier for this task: TIER=\`$REVIEW_TIER\`.
+Follow the review procedure at \`$FM_ROOT/crew/review/review-procedure.md\` exactly, with FM=\`$FM_ROOT\` and the tier above.
+Use the PR-description guidance it references when you open the PR.
+The Finish section of the procedure defines the done report for this task: \`done: PR {url}\` plus a one-line note of any rejected findings.
+EOF
+)
+    else
     DOD=$(cat <<EOF
 # Definition of done
 This project ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
@@ -183,6 +223,7 @@ When it is implemented and committed, push your branch and open a PR with \`gh-a
 Do NOT run /no-mistakes. The captain reviews and merges the PR; firstmate relays it.
 EOF
 )
+    fi
     ;;
   local-only)
     SETUP2=""

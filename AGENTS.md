@@ -864,6 +864,7 @@ These skills are not captain-invocable; they are conditional operating reference
 - `secondmate-provisioning` - load before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited config into, or retiring a secondmate home, and before editing `data/secondmates.md`.
 - `fmx-respond` - load on an `x-mention <request_id>` `check:` wake to handle the mention, on an `x-mode-error ...` `check:` wake to report the X-mode configuration blocker, and on any milestone or terminal wake for an X-linked task before posting its completion follow-up; relevant only when X mode is on.
 - `firstmate-coding-guidelines` - load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
+- `pr-review-dispatch` - load at intake before dispatching a ship task that should carry the post-implementation dual review, when choosing that review's tier, or before scaffolding a brief with `fm-brief.sh --review`.
 
 ## 14. X mode
 
