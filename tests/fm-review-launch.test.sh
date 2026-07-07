@@ -4,7 +4,8 @@
 # The script is the one owner of the pilot-verified dual-reviewer launch
 # commands and per-tier prompts, so these tests pin that verified surface:
 # the exact default models/flags, the per-tier prompt shapes (including the
-# mandatory "Use subagents" wording in the full-tier codex prompt), the
+# mandatory "Use subagents" wording in the full-tier codex prompt and the
+# review-bot disambiguation sentence in every prompt), the
 # config/review.env override indirection with its absent-file defaults, and
 # launch mode's parallel capture and failure propagation.
 set -u
@@ -22,12 +23,14 @@ test_print_full_defaults() {
   mkdir -p "$cfg"
   out=$(FM_CONFIG_OVERRIDE="$cfg" "$ROOT/bin/fm-review-launch.sh" full 123 --print) \
     || fail "print mode with default config should exit 0"
-  assert_contains "$out" "claude: claude -p 'Review the PR #123 using your code-review skill. Also consult advice in .review/guidelines.md (and .review/frontend.md if the PR contains frontend changes).' --model claude-fable-5 --effort high --permission-mode auto" \
+  assert_contains "$out" "claude: claude -p 'Review the PR #123 using your code-review skill. Also consult advice in .review/guidelines.md (and .review/frontend.md if the PR contains frontend changes). Do not invoke the review-bot skill.' --model claude-fable-5 --effort high --permission-mode auto" \
     "full-tier claude command drifted from the pilot-verified default"
   assert_contains "$out" "codex: codex exec --yolo --model gpt-5.5 -c 'model_reasoning_effort=\"high\"'" \
     "full-tier codex command drifted from the pilot-verified default"
   assert_contains "$out" "using the review skill at $ROOT/crew/review/diff-review.md. Use subagents." \
     "full-tier codex prompt lost the diff-review path or the mandatory Use subagents wording"
+  assert_contains "$out" "Use subagents. Also consult the advice in .review/guidelines.md (and .review/frontend.md if the PR contains frontend changes). Do not invoke the review-bot skill.'" \
+    "full-tier codex prompt lost the review-bot disambiguation sentence"
   pass "fm-review-launch.sh: full tier prints the pilot-verified defaults"
 }
 
@@ -39,8 +42,10 @@ test_print_simple_prompts() {
   mkdir -p "$cfg"
   out=$(FM_CONFIG_OVERRIDE="$cfg" "$ROOT/bin/fm-review-launch.sh" simple 123 --print) \
     || fail "print mode (simple) should exit 0"
-  assert_contains "$out" "'Review the PR #123. Consult advice in .review/guidelines.md (and .review/frontend.md if the PR contains frontend changes).'" \
-    "simple-tier prompt drifted from the pilot-verified wording"
+  assert_contains "$out" "claude: claude -p 'Review the PR #123. Consult advice in .review/guidelines.md (and .review/frontend.md if the PR contains frontend changes). Do not invoke the review-bot skill.'" \
+    "simple-tier claude prompt drifted from the pilot-verified wording"
+  assert_contains "$out" "'model_reasoning_effort=\"high\"' 'Review the PR #123. Consult advice in .review/guidelines.md (and .review/frontend.md if the PR contains frontend changes). Do not invoke the review-bot skill.'" \
+    "simple-tier codex prompt drifted from the pilot-verified wording"
   assert_not_contains "$out" "code-review skill" "simple tier must not reference the claude skill"
   assert_not_contains "$out" "Use subagents" "simple tier must not request subagents"
   assert_not_contains "$out" "diff-review.md" "simple tier must not point codex at the review skill file"
