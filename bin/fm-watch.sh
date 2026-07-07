@@ -24,8 +24,11 @@
 #                          consecutive escalations on the SAME pane, the reason
 #                          also carries a "demand-deep-inspection" marker so the
 #                          wake payload itself, not just repetition, forces a
-#                          closer look instead of another routine re-arm. Unless
-#                          afk is active.
+#                          closer look instead of another routine re-arm. An
+#                          acked terminal park (bin/fm-stale-ack.sh; policy
+#                          stale_is_acked in fm-classify-lib.sh) is absorbed
+#                          with no wedge timer while the status log's last line
+#                          matches the ack. Unless afk is active.
 #   check: <script>: <out> per-task check output, always actionable
 #   heartbeat              fleet-scan backstop found an unsurfaced captain-relevant
 #                          status, unless afk is active
@@ -377,6 +380,10 @@ heartbeat_scan_finds_actionable() {
     [ -n "$f" ] || continue
     surfaced=$(cat "$(_hb_surfaced_path "$task")" 2>/dev/null || true)
     [ "$surfaced" = "$last" ] && continue
+    # An acked terminal line (bin/fm-stale-ack.sh) was already relayed by
+    # firstmate, so the backstop skips re-surfacing that exact line; a NEW
+    # captain-relevant append mismatches the ack and still surfaces here.
+    stale_is_acked "$task" "$STATE" && continue
     return 0
   done < <(scan_captain_relevant_statuses "$STATE")
   return 1
@@ -509,6 +516,19 @@ EOF
             printf '%s' "$h" > "$sf"
             wake "stale: $w"
           fi
+        elif stale_is_acked "$(window_to_task "$w" "$STATE")" "$STATE"; then
+          # Acknowledged terminal park (bin/fm-stale-ack.sh): firstmate already
+          # relayed this status line and the window deliberately stays parked
+          # awaiting an external event (e.g. a PR merge gating teardown), so
+          # its stale wakes are absorbed and never wedge-escalated. A NEW
+          # status append invalidates the ack by content mismatch (that write
+          # itself fires a never-suppressed signal wake) and normal stale
+          # triage resumes here.
+          if [ "$(cat "$sf" 2>/dev/null || true)" != "$h" ]; then
+            printf '%s' "$h" > "$sf"
+            triage_log "absorbed stale (acked terminal park): $w"
+          fi
+          rm -f "$ssf" "$ewf"
         elif stale_is_terminal "$w" "$STATE"; then
           # The log's last line is captain-relevant - but that alone is not
           # proof the crew is actually done: a crew's own status log gets no

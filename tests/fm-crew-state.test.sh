@@ -85,7 +85,8 @@ case "${1:-}" in
     printf '%%1\n' ;;
   capture-pane)
     [ "${FM_FAKE_TMUX_MISSING:-0}" = 1 ] && exit 1
-    if [ "${FM_FAKE_BUSY:-0}" = 1 ]; then printf 'work in progress\nesc to interrupt\n'
+    if [ -n "${FM_FAKE_PANE:-}" ]; then printf '%s\n' "$FM_FAKE_PANE"
+    elif [ "${FM_FAKE_BUSY:-0}" = 1 ]; then printf 'work in progress\nesc to interrupt\n'
     else printf 'all quiet\n> \n'; fi ;;
 esac
 exit 0
@@ -154,12 +155,13 @@ reset_fakes() {
   FM_FAKE_AXI_STATUS_RUN=""
   FM_FAKE_RUNS_LIST=""
   FM_FAKE_BUSY=0
+  FM_FAKE_PANE=""
   FM_FAKE_TMUX_MISSING=0
   FM_FAKE_HERDR_BUSY=0
   FM_FAKE_HERDR_MISSING=0
   FM_FAKE_HERDR_AGENT_STATUS=""
   FM_FAKE_CI_LOGS=""
-  export FM_FAKE_AXI_STATUS FM_FAKE_AXI_STATUS_RUN FM_FAKE_RUNS_LIST FM_FAKE_BUSY FM_FAKE_TMUX_MISSING
+  export FM_FAKE_AXI_STATUS FM_FAKE_AXI_STATUS_RUN FM_FAKE_RUNS_LIST FM_FAKE_BUSY FM_FAKE_PANE FM_FAKE_TMUX_MISSING
   export FM_FAKE_HERDR_BUSY FM_FAKE_HERDR_MISSING FM_FAKE_HERDR_AGENT_STATUS FM_FAKE_CI_LOGS
 }
 
@@ -785,6 +787,126 @@ test_no_run_busy_pane() {
   pass "no run + busy pane reads working from the pane"
 }
 
+# Claude background-task working evidence (verified Claude Code 2.1.201,
+# 2026-07-06): a claude crew parked between harness-tracked background
+# subprocesses shows NO "esc to interrupt" busy footer, but the pane renders
+# "· N shell(s) still running" and/or a "· N shell[s][, N monitor[s]] ...
+# ↓ to manage" footer. crew_pane_is_busy must count those markers as working
+# evidence for harness=claude only, so the watcher absorbs the span's bare
+# turn-ended and stale wakes instead of surfacing dozens of no-op turns.
+CLAUDE_BG_SPINNER_PANE='reviewing the branch now
+✻ Brewed for 4m 0s · 2 shells still running
+> '
+CLAUDE_BG_FOOTER_PANE='all quiet here
+>
+  · 1 shell, 1 monitor  ↓ to manage'
+# Loose conversation text about shells must NOT count (structural anchoring).
+CLAUDE_BG_LOOSE_TEXT_PANE='note: the shell is still running fine
+we still have shells running somewhere
+press ↓ to manage your settings
+> '
+
+test_no_run_claude_bg_shells_spinner_working() {
+  reset_fakes
+  local d; d=$(new_case claude-bg-spinner)
+  make_repo_on_branch "$d/wt" fm/feat-bgspin
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-bgspin.meta" "window=fm:fm-feat-bgspin" "worktree=$d/wt" "kind=ship" "harness=claude"
+  FM_FAKE_PANE="$CLAUDE_BG_SPINNER_PANE"
+  local out; out=$(run_crew_state "$d" feat-bgspin)
+  assert_contains "$out" "state: working" "claude bg-shells spinner line -> working"
+  assert_contains "$out" "source: pane" "claude bg-shells spinner line -> pane source"
+  pass "claude pane with N-shells-still-running spinner reads working"
+}
+
+test_no_run_claude_bg_footer_working() {
+  reset_fakes
+  local d; d=$(new_case claude-bg-footer)
+  make_repo_on_branch "$d/wt" fm/feat-bgfoot
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-bgfoot.meta" "window=fm:fm-feat-bgfoot" "worktree=$d/wt" "kind=ship" "harness=claude"
+  FM_FAKE_PANE="$CLAUDE_BG_FOOTER_PANE"
+  local out; out=$(run_crew_state "$d" feat-bgfoot)
+  assert_contains "$out" "state: working" "claude bg-tasks footer -> working"
+  assert_contains "$out" "source: pane" "claude bg-tasks footer -> pane source"
+  pass "claude pane with shells/monitor manage footer reads working"
+}
+
+# Parked WITHOUT background tasks: an idle claude pane, even one whose
+# conversation text loosely mentions shells, must NOT read as working.
+test_no_run_claude_parked_without_bg_not_working() {
+  reset_fakes
+  local d; d=$(new_case claude-parked-no-bg)
+  make_repo_on_branch "$d/wt" fm/feat-nobg
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-nobg.meta" "window=fm:fm-feat-nobg" "worktree=$d/wt" "kind=ship" "harness=claude"
+  printf 'working: reviewing\n' > "$d/state/feat-nobg.status"
+  FM_FAKE_PANE="$CLAUDE_BG_LOOSE_TEXT_PANE"
+  local out; out=$(run_crew_state "$d" feat-nobg)
+  assert_not_contains "$out" "source: pane" "loose shell talk must not read as pane working evidence"
+  assert_contains "$out" "source: status-log" "parked-without falls to the status log"
+  pass "claude pane without bg-task markers stays not-working"
+}
+
+# The pre-existing busy signature still counts, unchanged, for claude.
+test_no_run_claude_busy_signature_working() {
+  reset_fakes
+  local d; d=$(new_case claude-busy-sig)
+  make_repo_on_branch "$d/wt" fm/feat-busysig
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-busysig.meta" "window=fm:fm-feat-busysig" "worktree=$d/wt" "kind=ship" "harness=claude"
+  FM_FAKE_BUSY=1
+  local out; out=$(run_crew_state "$d" feat-busysig)
+  assert_contains "$out" "state: working" "claude busy signature -> working"
+  assert_contains "$out" "source: pane" "claude busy signature -> pane source"
+  pass "claude busy signature still reads working"
+}
+
+# The extension is claude-only: the same markers on another harness's pane must
+# not loosen that harness's working evidence.
+test_no_run_nonclaude_bg_markers_not_working() {
+  reset_fakes
+  local d; d=$(new_case nonclaude-bg-markers)
+  make_repo_on_branch "$d/wt" fm/feat-bgcodex
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-bgcodex.meta" "window=fm:fm-feat-bgcodex" "worktree=$d/wt" "kind=ship" "harness=codex"
+  printf 'working: implementing\n' > "$d/state/feat-bgcodex.status"
+  FM_FAKE_PANE="$CLAUDE_BG_SPINNER_PANE"
+  local out; out=$(run_crew_state "$d" feat-bgcodex)
+  assert_not_contains "$out" "source: pane" "bg-task markers must not count for a non-claude harness"
+  assert_contains "$out" "source: status-log" "non-claude falls to the status log"
+  pass "bg-task markers do not loosen non-claude working evidence"
+}
+
+# End-to-end over the watcher's own predicate: a claude crew parked between
+# background shells is provably working, so its no-verb wakes are absorbed.
+test_claude_bg_shells_provably_working() {
+  reset_fakes
+  local d; d=$(new_case claude-bg-provable)
+  make_repo_on_branch "$d/wt" fm/feat-bgprove
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-bgprove.meta" "window=fm:fm-feat-bgprove" "worktree=$d/wt" "kind=ship" "harness=claude"
+  FM_FAKE_PANE="$CLAUDE_BG_SPINNER_PANE"
+  PATH="$d/fakebin:$PATH" FM_STATE_OVERRIDE="$d/state" crew_is_provably_working feat-bgprove \
+    || fail "a claude crew parked between background shells was not treated as provably working"
+  pass "crew_is_provably_working absorbs a claude crew parked between background shells"
+}
+
+# Terminal statuses are untouched by the extension: a done: status line stays
+# captain-relevant (actionable) no matter what the pane shows.
+test_claude_bg_shells_done_status_still_actionable() {
+  reset_fakes
+  local d; d=$(new_case claude-bg-done)
+  make_repo_on_branch "$d/wt" fm/feat-bgdone
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-bgdone.meta" "window=fm:fm-feat-bgdone" "worktree=$d/wt" "kind=ship" "harness=claude"
+  printf 'done: PR https://github.com/o/r/pull/9 checks green\n' > "$d/state/feat-bgdone.status"
+  FM_FAKE_PANE="$CLAUDE_BG_FOOTER_PANE"
+  signal_reason_is_actionable "$d/state/feat-bgdone.status" \
+    || fail "a done: status was not actionable with bg-task markers on the pane"
+  pass "done: status still surfaces regardless of bg-task markers"
+}
+
 test_no_run_herdr_unknown_uses_backend_capture() {
   command -v jq >/dev/null 2>&1 || { pass "herdr pane fallback skipped without jq"; return; }
   reset_fakes
@@ -1073,6 +1195,13 @@ test_cross_branch_attribution_picks_most_recent_row
 test_coarse_run_does_not_probe_other_branch_ci_log_for_ready_status
 test_other_branch_run_ignored
 test_no_run_busy_pane
+test_no_run_claude_bg_shells_spinner_working
+test_no_run_claude_bg_footer_working
+test_no_run_claude_parked_without_bg_not_working
+test_no_run_claude_busy_signature_working
+test_no_run_nonclaude_bg_markers_not_working
+test_claude_bg_shells_provably_working
+test_claude_bg_shells_done_status_still_actionable
 test_no_run_herdr_unknown_uses_backend_capture
 test_no_run_herdr_idle_agent_status_corroborated_by_busy_pane
 test_no_run_herdr_idle_agent_status_and_idle_pane_stays_idle

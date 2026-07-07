@@ -147,6 +147,27 @@ signal_crew_provably_working() {  # <file> ...
   return 0
 }
 
+# Acknowledged-terminal suppression, the shared policy behind bin/fm-stale-ack.sh:
+# state/<task>.stale-ack holds the status log's last line as of an EXPLICIT
+# firstmate ack (never written automatically - auto-acking would reintroduce the
+# swallowed-stopped-crew bug the provably-working design avoids). 0 (suppress
+# stale-type triage for this task) while the marker exists, is non-empty, AND
+# still equals the status log's current last line. A NEW status append changes
+# that last line, so the ack self-invalidates by content mismatch and normal
+# triage resumes - no consumer needs to clean the marker up on invalidation
+# (teardown removes it with the task's other state files). Consulted ONLY on
+# stale-type paths and the heartbeat/catch-all re-surfacing of the exact acked
+# line; signal and check wakes are never suppressed by an ack.
+stale_is_acked() {  # <task> <state>
+  local task=$1 state=$2 ack last
+  [ -n "$task" ] || return 1
+  [ -e "$state/$task.stale-ack" ] || return 1
+  ack=$(cat "$state/$task.stale-ack" 2>/dev/null || true)
+  [ -n "$ack" ] || return 1
+  last=$(last_status_line "$state/$task.status")
+  [ "$ack" = "$last" ]
+}
+
 # 0 (terminal/actionable) if a stale window's last status line is
 # captain-relevant; 1 otherwise, including the no-status case. A 1 only means
 # "non-terminal"; the always-on watcher then applies crew_is_provably_working,

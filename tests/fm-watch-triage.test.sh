@@ -108,6 +108,58 @@ test_stale_is_terminal_classifier() {
   pass "stale_is_terminal: terminal status surfaces, non-terminal and no-status are benign"
 }
 
+# stale_is_acked: the acknowledged-terminal suppression policy behind
+# bin/fm-stale-ack.sh. Valid only while the ack content still equals the status
+# log's last line; a new append (content mismatch), a missing or empty ack, or a
+# missing status all mean NOT acked, so normal triage applies.
+test_stale_is_acked_classifier() {
+  local dir state
+  dir=$(make_case classify-acked); state="$dir/state"
+  printf 'done: PR https://x/y/pull/9\n' > "$state/park.status"
+  printf '%s' 'done: PR https://x/y/pull/9' > "$state/park.stale-ack"
+  stale_is_acked park "$state" || fail "matching ack not recognized"
+  printf 'failed: merge conflict\n' >> "$state/park.status"
+  stale_is_acked park "$state" && fail "a new status append did not invalidate the ack"
+  stale_is_acked other "$state" && fail "a task with no ack file was treated as acked"
+  : > "$state/empty.stale-ack"
+  printf 'done: x\n' > "$state/empty.status"
+  stale_is_acked empty "$state" && fail "an empty ack file was treated as a valid ack"
+  printf '%s' 'done: y' > "$state/gone.stale-ack"
+  stale_is_acked gone "$state" && fail "an ack with no status file was treated as valid"
+  stale_is_acked "" "$state" && fail "an empty task id was treated as acked"
+  pass "stale_is_acked: valid only while the ack matches the status log's last line"
+}
+
+# bin/fm-stale-ack.sh records the status log's current last line, refuses a task
+# with no meta or no status line, --clear removes the marker, and any other
+# extra argument is rejected instead of silently re-acking.
+test_stale_ack_helper() {
+  local dir state out
+  dir=$(make_case stale-ack-helper); state="$dir/state"
+  printf 'window=sess:fm-park-h1\nkind=ship\n' > "$state/park-h1.meta"
+  printf 'working: setup\ndone: PR https://x/y/pull/4\n' > "$state/park-h1.status"
+  out=$(FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" park-h1 2>/dev/null) \
+    || fail "helper failed to ack a task with a terminal status: $out"
+  [ "$(cat "$state/park-h1.stale-ack")" = "done: PR https://x/y/pull/4" ] \
+    || fail "helper did not record the status log's last line"
+  stale_is_acked park-h1 "$state" || fail "helper-recorded ack not accepted by the shared policy"
+  FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" park-h1 --clear >/dev/null 2>&1 \
+    || fail "helper --clear failed"
+  [ ! -e "$state/park-h1.stale-ack" ] || fail "helper --clear did not remove the marker"
+  FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" no-such-task >/dev/null 2>&1 \
+    && fail "helper acked a task with no meta"
+  printf 'window=sess:fm-park-h2\nkind=ship\n' > "$state/park-h2.meta"
+  FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" park-h2 >/dev/null 2>&1 \
+    && fail "helper acked a task with no status line"
+  printf 'done: PR https://x/y/pull/5\n' > "$state/park-h2.status"
+  FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" park-h2 --claer >/dev/null 2>&1 \
+    && fail "helper accepted an unrecognized second argument"
+  [ ! -e "$state/park-h2.stale-ack" ] || fail "unrecognized argument still recorded an ack"
+  FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-stale-ack.sh" park-h2 --clear extra >/dev/null 2>&1 \
+    && fail "helper accepted trailing arguments after --clear"
+  pass "fm-stale-ack.sh records the last status line, refuses meta-less/status-less tasks and bad arguments, and --clear removes it"
+}
+
 test_scan_captain_relevant_statuses_classifier() {
   local dir state out
   dir=$(make_case classify-scan); state="$dir/state"
@@ -316,6 +368,114 @@ test_terminal_stale_surfaced() {
   FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after the terminal stale failed"
   grep "$(printf '\tstale\t')" "$drain_out" | grep -F "$window" >/dev/null || fail "terminal stale was not queued"
   pass "a stale pane sitting on a terminal status is surfaced (queue + exit)"
+}
+
+# --- acked terminal park: stale wakes absorbed, wedge state cleared -----------
+# Case A of the benign-idle churn: a ship crewmate reported done: PR ..., the
+# report was relayed, and the pane then sits idle for hours awaiting the merge
+# (teardown is gated on it, so the window must stay). Without the ack the
+# watcher re-escalates the same unchanged pane forever; with a valid ack
+# (bin/fm-stale-ack.sh) the stale wake is absorbed with no queue entry and no
+# wedge escalation, even when prior escalations already left timer/counter state.
+test_acked_terminal_stale_absorbed() {
+  local dir state fakebin out capture_file window key pane_hash sig pid
+  dir=$(make_case acked-stale-absorb); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"
+  window="test:fm-parked"
+  printf 'finished, awaiting merge' > "$capture_file"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/parked.meta"
+  printf 'done: PR https://example.test/pr/9\n' > "$state/parked.status"
+  printf '%s' 'done: PR https://example.test/pr/9' > "$state/parked.stale-ack"
+  sig=$(seen_sig "$state/parked.status"); printf '%s' "$sig" > "$state/.seen-parked_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "finished, awaiting merge")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  # Pre-seed wedge state as if escalations already fired before the ack, with
+  # the timer backdated past the threshold: if the ack failed to intercept, the
+  # very next poll would wedge-escalate and exit the watcher.
+  echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+  printf '5\n' > "$state/.wedge-escalations-$key"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_live "$pid" 30; then
+    reap "$pid"; fail "watcher exited for an acked terminal park (should absorb): $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || fail "acked terminal park printed a wake reason: $(cat "$out")"
+  [ ! -s "$state/.wake-queue" ] || fail "acked terminal park enqueued a durable wake record"
+  [ "$(cat "$state/.stale-$key" 2>/dev/null || true)" = "$pane_hash" ] || fail "acked stale did not advance the stale suppressor"
+  [ ! -e "$state/.stale-since-$key" ] || fail "acked stale left the wedge timer running"
+  [ ! -e "$state/.wedge-escalations-$key" ] || fail "acked stale left the wedge-escalation counter"
+  grep -F "acked terminal park" "$state/.watch-triage.log" >/dev/null || fail "acked absorb was not logged to the triage log"
+  reap "$pid"
+  pass "an acked terminal park absorbs stale wakes and clears wedge timer/counter state"
+}
+
+# A NEW status append after the ack invalidates it (content mismatch), so the
+# stale path returns to normal triage and the parked pane surfaces again.
+test_invalidated_ack_stale_surfaced() {
+  local dir state fakebin out drain_out capture_file window key pane_hash sig pid
+  dir=$(make_case acked-stale-invalidated); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; drain_out="$dir/drain.out"; capture_file="$dir/pane.txt"
+  window="test:fm-rewoke"
+  printf 'finished, then spoke again' > "$capture_file"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/rewoke.meta"
+  # The ack captured the done: line; the crewmate then appended a new status,
+  # so the ack no longer matches the log's last line.
+  printf 'done: PR https://example.test/pr/9\nfailed: merge conflict on rebase\n' > "$state/rewoke.status"
+  printf '%s' 'done: PR https://example.test/pr/9' > "$state/rewoke.stale-ack"
+  sig=$(seen_sig "$state/rewoke.status"); printf '%s' "$sig" > "$state/.seen-rewoke_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "finished, then spoke again")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 40 || fail "watcher did not surface a stale whose ack was invalidated by a new append"
+  grep -Fx "stale: $window" "$out" >/dev/null || fail "watcher did not print the invalidated-ack stale wake"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after the invalidated-ack stale failed"
+  grep "$(printf '\tstale\t')" "$drain_out" | grep -F "$window" >/dev/null || fail "invalidated-ack stale was not queued"
+  pass "a new status append invalidates the ack and the stale surfaces again"
+}
+
+# The heartbeat backstop skips re-surfacing the exact acked line but must still
+# surface a NEW captain-relevant line for the same task.
+test_heartbeat_backstop_skips_acked_line_but_surfaces_new() {
+  local dir state fakebin out sig pid
+  dir=$(make_case heartbeat-acked); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"
+  # Phase A: a captain-relevant status with no .hb-surfaced marker would normally
+  # trip the backstop; a matching ack suppresses exactly that line.
+  printf 'done: PR https://example.test/pr/6\n' > "$state/park.status"
+  printf '%s' 'done: PR https://example.test/pr/6' > "$state/park.stale-ack"
+  sig=$(seen_sig "$state/park.status"); printf '%s' "$sig" > "$state/.seen-park_status"
+  PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=1 "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_live "$pid" 30; then
+    reap "$pid"; fail "heartbeat backstop surfaced the exact acked line (should absorb): $(cat "$out")"
+  fi
+  [ ! -s "$state/.wake-queue" ] || fail "acked-line heartbeat enqueued a wake"
+  reap "$pid"
+
+  # Phase B: a NEW captain-relevant append mismatches the ack; the backstop
+  # must surface it even though an ack file exists. Reset the heartbeat backoff
+  # phase A's absorbed heartbeats accumulated, so the next scan is due promptly.
+  printf 'failed: merge conflict on rebase\n' >> "$state/park.status"
+  sig=$(seen_sig "$state/park.status"); printf '%s' "$sig" > "$state/.seen-park_status"
+  echo 0 > "$state/.heartbeat-streak"
+  rm -f "$state/.last-heartbeat"
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=1 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 40 || fail "heartbeat backstop did not surface a new captain-relevant line for an acked task"
+  grep -Fx "heartbeat" "$out" >/dev/null || fail "backstop did not exit with a heartbeat wake for the new line"
+  pass "heartbeat backstop skips the exact acked line but surfaces a new captain-relevant status"
 }
 
 # --- stale pane, STALE terminal status overridden by an active run: absorbed ---
@@ -742,6 +902,8 @@ test_afk_present_reverts_watcher_to_one_shot() {
 
 test_signal_reason_is_actionable_classifier
 test_stale_is_terminal_classifier
+test_stale_is_acked_classifier
+test_stale_ack_helper
 test_scan_captain_relevant_statuses_classifier
 test_classifier_primitives
 test_crew_is_provably_working_classifier
@@ -752,6 +914,9 @@ test_turn_ended_not_working_surfaced
 test_working_note_not_working_surfaced
 test_actionable_signal_surfaced
 test_terminal_stale_surfaced
+test_acked_terminal_stale_absorbed
+test_invalidated_ack_stale_surfaced
+test_heartbeat_backstop_skips_acked_line_but_surfaces_new
 test_stale_terminal_status_overridden_by_active_run
 test_nonterminal_stale_provably_working_absorbed_then_escalated
 test_wedge_escalation_marks_demand_deep_inspection_after_threshold

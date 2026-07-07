@@ -86,6 +86,7 @@ meta_value() {  # <key>
 WT=$(meta_value worktree)
 KIND=$(meta_value kind)
 [ -n "$KIND" ] || KIND=ship
+HARNESS=$(meta_value harness)
 
 # A torn-down (or never-created) worktree has no current state to read.
 if [ -z "$WT" ] || [ ! -d "$WT" ]; then
@@ -165,9 +166,34 @@ pane_readable() {  # <target>
 # the absorb-then-escalate path. A genuinely human-blocked agent (a permission
 # dialog, not mid-tool-call) does not render the busy banner, so this
 # corroboration does not mask that case: it stays correctly not-busy.
+# Claude background-task markers (harness=claude only; verified Claude Code
+# 2.1.201, 2026-07-06): a claude crewmate parked between harness-tracked
+# background subprocesses (e.g. parallel reviewer agents it launched) shows NO
+# busy footer - "esc to interrupt" is absent for the whole span - yet the pane
+# carries positive working evidence: a spinner line ending "· N shell(s) still
+# running" (e.g. "✻ Brewed for 4m 0s · 2 shells still running") and/or a
+# footer segment "· N shell[s][, N monitor[s]]" followed by "↓ to manage".
+# Without this, every bare turn-ended signal and pane-change stale during such
+# a span read as not provably working and surfaced as a no-op supervision turn
+# (observed live 2026-07-06, dozens per review cycle). Anchored structurally on
+# the "· <count> shell/monitor" segment plus "still running" or "↓ to manage"
+# on the same line, so loose conversation text does not match. Other
+# harnesses' evidence is deliberately unchanged.
+FM_CLAUDE_BG_TASKS_REGEX='· [0-9]+ shells? still running|· [0-9]+ (shells?|monitors?)(, [0-9]+ (shells?|monitors?))?.*↓ to manage'
+claude_tail_shows_bg_tasks() {  # <tail40>
+  [ "$HARNESS" = claude ] || return 1
+  printf '%s' "$1" | grep -v '^[[:space:]]*$' | tail -6 \
+    | grep -qE "$FM_CLAUDE_BG_TASKS_REGEX"
+}
 crew_pane_is_busy() {  # <target>
   case "$TASK_BACKEND" in
-    tmux) fm_pane_is_busy "$1" ;;
+    tmux)
+      local tmux_tail40
+      fm_pane_is_busy "$1" && return 0
+      [ "$HARNESS" = claude ] || return 1
+      tmux_tail40=$(tmux capture-pane -p -t "$1" -S -40 2>/dev/null) || return 1
+      claude_tail_shows_bg_tasks "$tmux_tail40"
+      ;;
     *)
       local bs tail40
       bs=$(fm_backend_busy_state "$TASK_BACKEND" "$1" 2>/dev/null)
@@ -175,8 +201,11 @@ crew_pane_is_busy() {  # <target>
         busy) return 0 ;;
         *)
           tail40=$(fm_backend_capture "$TASK_BACKEND" "$1" 40 "$EXPECTED_LABEL" 2>/dev/null) || return 1
-          printf '%s' "$tail40" | grep -v '^[[:space:]]*$' | tail -6 \
-            | grep -qiE "${FM_BUSY_REGEX:-$FM_TMUX_BUSY_REGEX_DEFAULT}"
+          if printf '%s' "$tail40" | grep -v '^[[:space:]]*$' | tail -6 \
+               | grep -qiE "${FM_BUSY_REGEX:-$FM_TMUX_BUSY_REGEX_DEFAULT}"; then
+            return 0
+          fi
+          claude_tail_shows_bg_tasks "$tail40"
           ;;
       esac
       ;;
