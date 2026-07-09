@@ -32,6 +32,13 @@
 #   local-only   implement on branch, stop and report "ready in branch" (no push/PR);
 #                firstmate reviews, captain approves, firstmate merges to local main
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
+# Ship briefs name the task branch <prefix><task-id>. The prefix comes from
+# config/branch-prefix (LOCAL, gitignored): a single line such as "nolan/" or
+# "nolan" (a missing trailing "/" is normalized). Absent or empty means the
+# default "fm/". A value containing whitespace or anything git rejects in a
+# branch name warns to stderr and falls back to the default, so the scaffold
+# never emits an unusable branch. Scout and secondmate briefs name no branch
+# and ignore the knob.
 # Scout tasks ignore mode - their deliverable is a report, not a merge.
 # Ship tasks include a project-memory section so durable project-intrinsic
 # learnings can be committed to AGENTS.md through the project's delivery path.
@@ -45,6 +52,7 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 KIND=ship
 REVIEW_TIER=
 POS=()
@@ -183,7 +191,29 @@ echo "scaffolded: $BRIEF (scout; replace {TASK})"
 exit 0
 fi
 
-# Ship task: shape Setup / Rule 1 / Definition of done by the project's delivery mode.
+# Ship task: resolve the task branch from config/branch-prefix (header documents
+# the format); an invalid value warns and keeps the default so the brief stays usable.
+BRANCH_PREFIX=fm/
+if [ -f "$CONFIG/branch-prefix" ]; then
+  RAW_PREFIX=$(head -n 1 "$CONFIG/branch-prefix" | tr -d '\r')
+  if [ -n "$RAW_PREFIX" ]; then
+    CANDIDATE="${RAW_PREFIX%/}/"
+    case "$RAW_PREFIX" in
+      *[[:space:]]*)
+        echo "fm-brief: warning: invalid config/branch-prefix '$RAW_PREFIX' (contains whitespace); using default fm/" >&2 ;;
+      *)
+        if git check-ref-format "refs/heads/${CANDIDATE}x" >/dev/null 2>&1; then
+          BRANCH_PREFIX=$CANDIDATE
+        else
+          echo "fm-brief: warning: invalid config/branch-prefix '$RAW_PREFIX' (not a valid git branch prefix); using default fm/" >&2
+        fi
+        ;;
+    esac
+  fi
+fi
+BRANCH="$BRANCH_PREFIX$ID"
+
+# Shape Setup / Rule 1 / Definition of done by the project's delivery mode.
 # yolo does not affect the brief (it governs firstmate's approval behaviour), so discard it.
 read -r MODE _ <<EOF
 $("$FM_ROOT/bin/fm-project-mode.sh" "$REPO")
@@ -198,7 +228,7 @@ fi
 case "$MODE" in
   direct-PR)
     SETUP2=""
-    RULE1='1. Never push to the default branch (push only your `fm/'"$ID"'` branch). Never merge a PR.'
+    RULE1='1. Never push to the default branch (push only your `'"$BRANCH"'` branch). Never merge a PR.'
     if [ -n "$REVIEW_TIER" ]; then
     DOD=$(cat <<EOF
 # Definition of done
@@ -227,13 +257,13 @@ EOF
     ;;
   local-only)
     SETUP2=""
-    RULE1="1. Never push to any remote and never open a PR. Work only on your \`fm/$ID\` branch; firstmate handles the merge into local \`main\`."
+    RULE1="1. Never push to any remote and never open a PR. Work only on your \`$BRANCH\` branch; firstmate handles the merge into local \`main\`."
     DOD=$(cat <<EOF
 # Definition of done
 This project ships **local-only**: no remote, no PR, no pipeline.
-The task is complete only when committed on your branch \`fm/$ID\`. Do NOT push, do NOT open a PR, do NOT merge.
+The task is complete only when committed on your branch \`$BRANCH\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
-When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop.
+When it is implemented and committed, append \`done: ready in branch $BRANCH\` to the status file and stop.
 Firstmate then reviews your branch diff, the captain approves, and firstmate merges it into local \`main\`.
 EOF
 )
@@ -276,7 +306,7 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
-1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
+1. First action: create your branch: \`git checkout -b $BRANCH\`$SETUP2
 
 # Rules
 $RULE1

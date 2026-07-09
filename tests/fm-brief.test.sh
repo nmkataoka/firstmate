@@ -127,8 +127,76 @@ test_review_flag_refusals() {
   pass "fm-brief.sh: --review refusals cover tier, kind, and delivery mode"
 }
 
+# config/branch-prefix must rename the task branch everywhere a ship brief
+# names it, normalize a missing trailing "/", stay silent for a valid value,
+# and fall back to fm/ with a stderr warning on an invalid value. Scout briefs
+# name no branch, so the knob (even an invalid one) must never touch them.
+test_branch_prefix_knob() {
+  local home id brief err status
+  home="$TMP_ROOT/prefix-home"
+  write_registry "$home"
+  mkdir -p "$home/config"
+
+  # 1. no config file -> default fm/<id> everywhere the brief names the branch
+  id="brief-prefix-e1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "default-prefix brief was not scaffolded"
+  assert_grep "git checkout -b fm/$id" "$brief" "default brief lost the fm/ branch in Setup"
+  assert_grep "ready in branch fm/$id" "$brief" "default local-only DOD lost the fm/ branch"
+
+  # 2. a nolan/ value replaces fm/ in every branch mention, with no warning
+  printf 'nolan/\n' > "$home/config/branch-prefix"
+  id="brief-prefix-e2"
+  err="$TMP_ROOT/prefix-e2.err"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj >/dev/null 2>"$err"; status=$?
+  expect_code 0 "$status" "fm-brief.sh with a valid branch prefix should exit 0"
+  brief="$home/data/$id/brief.md"
+  assert_grep "git checkout -b nolan/$id" "$brief" "prefixed brief did not use nolan/ in Setup"
+  assert_grep "ready in branch nolan/$id" "$brief" "prefixed local-only DOD did not use nolan/"
+  assert_no_grep "fm/$id" "$brief" "prefixed brief still names the fm/ branch somewhere"
+  [ ! -s "$err" ] || fail "a valid branch prefix produced a stderr warning: $(cat "$err")"
+
+  # 3. a value without the trailing slash normalizes identically
+  printf 'nolan\n' > "$home/config/branch-prefix"
+  id="brief-prefix-e3"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_grep "push only your \`nolan/$id\` branch" "$brief" "slash-less prefix was not normalized in the direct-PR rule"
+
+  # 4. whitespace and git-ref-illegal values warn to stderr and fall back to fm/
+  for bad in "bad prefix" "nolan..x"; do
+    printf '%s\n' "$bad" > "$home/config/branch-prefix"
+    id="brief-prefix-e4-$(printf '%s' "$bad" | tr -cd '[:lower:]')"
+    err="$TMP_ROOT/$id.err"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj >/dev/null 2>"$err"; status=$?
+    expect_code 0 "$status" "an invalid branch prefix must not fail the scaffold"
+    assert_grep "git checkout -b fm/$id" "$home/data/$id/brief.md" "invalid prefix '$bad' did not fall back to fm/"
+    assert_grep "warning: invalid config/branch-prefix" "$err" "invalid prefix '$bad' produced no stderr warning"
+  done
+
+  # 5. an empty file means the default, silently
+  : > "$home/config/branch-prefix"
+  id="brief-prefix-e5"
+  err="$TMP_ROOT/prefix-e5.err"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj >/dev/null 2>"$err"
+  assert_grep "git checkout -b fm/$id" "$home/data/$id/brief.md" "empty prefix file did not keep the fm/ default"
+  [ ! -s "$err" ] || fail "an empty prefix file produced a stderr warning"
+
+  # 6. scout briefs name no branch and never read the knob, even an invalid one
+  printf 'bad prefix\n' > "$home/config/branch-prefix"
+  id="brief-prefix-e6"
+  err="$TMP_ROOT/prefix-e6.err"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj --scout >/dev/null 2>"$err"
+  assert_present "$home/data/$id/brief.md" "scout brief was not scaffolded"
+  [ ! -s "$err" ] || fail "a scout brief read the branch-prefix knob: $(cat "$err")"
+
+  pass "fm-brief.sh: config/branch-prefix renames, normalizes, and falls back safely"
+}
+
 test_script_parses
 test_ship_modes_generate_clean_briefs
+test_branch_prefix_knob
 test_no_mistakes_dod_wording
 test_review_flag_direct_pr
 test_review_flag_refusals

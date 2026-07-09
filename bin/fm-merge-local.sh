@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Perform the approved local merge for a local-only ship task: fast-forward the
-# project's default branch to the crewmate's fm/<id> branch.
+# project's default branch to the crewmate's task branch (fm/<id> by default).
 #
 # This is firstmate's merge gate-action (the captain's merge authority applied
 # locally instead of via a GitHub PR). It is the one sanctioned exception to hard
@@ -41,8 +41,23 @@ default_branch() {
   return 1
 }
 
+# The task branch is fm/<id> by default; when config/branch-prefix gave the brief
+# a different prefix, fall back to the task worktree's checked-out branch (the
+# same pattern fm-review-diff.sh uses).
 BRANCH="fm/$ID"
-git -C "$PROJ" rev-parse --verify --quiet "refs/heads/$BRANCH" >/dev/null || { echo "error: branch $BRANCH does not exist in $PROJ" >&2; exit 1; }
+if ! git -C "$PROJ" rev-parse --verify --quiet "refs/heads/$BRANCH" >/dev/null; then
+  WT=$(grep '^worktree=' "$META" | cut -d= -f2- || true)
+  ALT=""
+  if [ -n "$WT" ] && [ -d "$WT" ]; then
+    ALT=$(git -C "$WT" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+  fi
+  if [ -n "$ALT" ] && git -C "$PROJ" rev-parse --verify --quiet "refs/heads/$ALT" >/dev/null; then
+    BRANCH=$ALT
+  else
+    echo "error: branch $BRANCH does not exist in $PROJ and no task-worktree branch was found" >&2
+    exit 1
+  fi
+fi
 
 DEFAULT=$(default_branch) || { echo "error: cannot determine default branch for $PROJ; expected origin/HEAD, main, or master" >&2; exit 1; }
 
