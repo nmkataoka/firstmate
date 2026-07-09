@@ -16,6 +16,13 @@ Set the local, gitignored `config/backlog-backend` file to `manual` to force man
 Absent or `tasks-axi` selects the default tasks-axi backend.
 The file format is unchanged in both modes; tasks-axi and manual edits produce the same `## In flight`, `## Queued`, and `## Done` sections.
 
+## Crew branch prefix (config/branch-prefix)
+
+The local, gitignored `config/branch-prefix` file overrides the task branch prefix `fm-brief.sh` writes into scaffolded ship briefs, so ship branches become `<prefix><task-id>` instead of the default `fm/<task-id>`.
+The value format, trailing-slash normalization, and invalid-value fallback to the default `fm/` are documented in [`bin/fm-brief.sh`](../bin/fm-brief.sh)'s header.
+Scout and secondmate briefs name no branch and ignore the knob.
+The prefix is per-home, not per-project, and is inherited into secondmate homes with the other declared inheritable config.
+
 ## Runtime backend (config/backend / FM_BACKEND)
 
 For spawn-capable adapters, the runtime session-provider backend controls where task windows/endpoints are created, captured, sent to, watched, and killed.
