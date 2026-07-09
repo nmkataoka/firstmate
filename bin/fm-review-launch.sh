@@ -97,11 +97,14 @@ fi
 
 # Pilot-verified prompts. The full-tier codex prompt MUST contain the words
 # "Use subagents" - codex will not use them on a skill-file mention alone.
+# Every prompt ends with the no-posting sentence: reviewers run inside a
+# project worktree and can load project skills that post reviews to GitHub,
+# but findings must land in the capture files as reply text only.
 if [ "$TIER" = full ]; then
-  CLAUDE_PROMPT="Review the PR #$PR using your code-review skill. Also consult advice in $GUIDELINE_CLAUSE."
-  CODEX_PROMPT="Review the PR #$PR using the review skill at $FM_ROOT/crew/review/diff-review.md. Use subagents. Also consult the advice in $GUIDELINE_CLAUSE."
+  CLAUDE_PROMPT="Review the PR #$PR using your code-review skill. Also consult advice in $GUIDELINE_CLAUSE. Do not post your comments to GitHub; report your findings as reply text only."
+  CODEX_PROMPT="Review the PR #$PR using the review skill at $FM_ROOT/crew/review/diff-review.md. Use subagents. Also consult the advice in $GUIDELINE_CLAUSE. Do not post your comments to GitHub; report your findings as reply text only."
 else
-  CLAUDE_PROMPT="Review the PR #$PR. Consult advice in $GUIDELINE_CLAUSE."
+  CLAUDE_PROMPT="Review the PR #$PR. Consult advice in $GUIDELINE_CLAUSE. Do not post your comments to GitHub; report your findings as reply text only."
   CODEX_PROMPT=$CLAUDE_PROMPT
 fi
 
