@@ -32,6 +32,7 @@ Tier `simple` (also used for ALL follow-up rounds after fixes, even on full-tier
 - Both reviewers get a plain review prompt: no skill, no subagents.
 
 Both tiers' prompts have the reviewers consult the repo's review guideline links.
+Both tiers' prompts also tell the reviewers not to post their comments to GitHub and to report findings as reply text only, so the findings land in the capture files instead of as PR reviews.
 Save each reviewer's findings VERBATIM to files in your worktree tmp; the launch script's capture files satisfy this (do not summarize them before saving).
 
 ## Triage and fix
