@@ -12,7 +12,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-merge-local)
-fm_git_identity
+fm_git_identity fmtest fmtest@example.invalid
 
 # make_local_task <dir> <id> <branch>: project repo on its default branch, a
 # task worktree one commit ahead on <branch>, and a local-only meta in a state
