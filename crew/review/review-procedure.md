@@ -69,7 +69,9 @@ Treat them as: "We have some review feedback on your changes. Please investigate
   You do not need permission for routine fixes.
 - If a finding genuinely challenges intent/product behavior and you cannot decide, report `needs-decision:` with the finding, per your brief.
 
-If your stage 2 fixes were substantive (behavior changes, not nits), re-review them before the cleanup pass via the cheaper re-review path: run stage 1 once more over the updated branch, or launch one `simple`-tier claude round.
+If your stage 2 fixes were substantive (behavior changes, not nits), re-review them before the cleanup pass.
+Before each follow-up round, commit all review fixes and push the branch to origin so the PR head matches your local HEAD.
+Use the cheaper re-review path: run stage 1 once more over the updated branch, or launch one `simple`-tier claude round.
 A follow-up round is never zero review, and it never repeats the full-tier workflow.
 HARD CAP: three review rounds total (the initial two-reviewer round plus two follow-ups).
 Past that, fix what is clearly real, list everything else as rejected/deferred in your final report, and move to the cleanup pass.
