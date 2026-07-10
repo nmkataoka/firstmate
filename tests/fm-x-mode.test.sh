@@ -434,7 +434,7 @@ test_bootstrap_activates_on_env_token() {
 }
 
 test_bootstrap_reports_missing_x_dependency() {
-  local home fakebin out tool tool_path
+  local home fakebin out tool tool_path count
   home="$TMP_ROOT/boot-missing-x"; mkdir -p "$home"
   fakebin=$(fm_fakebin "$home")
   fm_fake_exit0 "$fakebin" tmux node no-mistakes gh-axi chrome-devtools-axi lavish-axi curl
@@ -463,6 +463,8 @@ SH
   out=$(PATH="$fakebin" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" \
     "$BASH" "$ROOT/bin/fm-bootstrap.sh" 2>/dev/null)
   assert_contains "$out" "MISSING: jq" "bootstrap must report missing jq when X mode is opted in"
+  count=$(printf '%s\n' "$out" | grep -Fc "MISSING: jq")
+  [ "$count" = 1 ] || fail "bootstrap must report globally missing jq exactly once (got $count)"
   assert_not_contains "$out" "FMX: X mode on" "bootstrap must not announce X mode when a dependency is missing"
   assert_absent "$home/state/x-watch.check.sh" "missing jq must not arm the check shim"
   assert_absent "$home/config/x-mode.env" "missing jq must not write the cadence config"

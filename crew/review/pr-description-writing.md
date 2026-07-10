@@ -18,45 +18,71 @@ FILE_PATH="<local-path>.png"
 FILE_NAME="<file>.png"
 TAG="evidence-${PR_NUM}"
 
-if ! UPLOAD_URLS=$(gh api --paginate "repos/${REPO}/releases?per_page=100" \
-  --jq ".[] | select(.draft == true and .tag_name == \"${TAG}\") | .upload_url"); then
+if ! RELEASES=$(gh api --paginate "repos/${REPO}/releases?per_page=100" \
+  --jq ".[] | select(.draft == true and .tag_name == \"${TAG}\") | {id, upload_url}"); then
   exit 1
 fi
-UPLOAD_URL=$(printf '%s\n' "$UPLOAD_URLS" | sed -n '1p')
-if [ -z "$UPLOAD_URL" ]; then
-  if ! UPLOAD_URL=$(gh api "repos/${REPO}/releases" -X POST \
+RELEASE=$(printf '%s\n' "$RELEASES" | sed -n '1p')
+if [ -z "$RELEASE" ]; then
+  if ! RELEASE=$(gh api "repos/${REPO}/releases" -X POST \
     -f tag_name="$TAG" \
     -f name="PR #${PR_NUM} Evidence" \
-    -F draft=true \
-    --jq '.upload_url | select(type == "string" and length > 0)'); then
+    -F draft=true); then
     exit 1
   fi
+fi
+if ! RELEASE_ID=$(printf '%s\n' "$RELEASE" | jq -er '.id | select(type == "number")'); then
+  exit 1
+fi
+if ! UPLOAD_URL=$(printf '%s\n' "$RELEASE" | jq -er '.upload_url | select(type == "string" and length > 0)'); then
+  exit 1
 fi
 UPLOAD_URL=${UPLOAD_URL%%\{*}
 [ -n "$UPLOAD_URL" ] && [ "$UPLOAD_URL" != null ] || exit 1
 
-AUTH_TOKEN=$(gh auth token)
-[ -n "$AUTH_TOKEN" ] || exit 1
-if ! UPLOAD_RESPONSE=$(curl -sS --fail -X POST \
-  "${UPLOAD_URL}?name=${FILE_NAME}" \
-  --config - \
-  -H "Content-Type: image/png" \
-  --data-binary "@${FILE_PATH}" <<EOF
-header = "Authorization: token ${AUTH_TOKEN}"
-EOF
-); then
-  unset AUTH_TOKEN
+if ! ASSETS=$(gh api --paginate "repos/${REPO}/releases/${RELEASE_ID}/assets?per_page=100" \
+  --jq '.[] | {name, browser_download_url}'); then
   exit 1
 fi
-unset AUTH_TOKEN
-ASSET_URL=$(printf '%s\n' "$UPLOAD_RESPONSE" | \
-  jq -er 'select(.state == "uploaded") | .browser_download_url | select(type == "string" and length > 0)')
+if ! EXISTING_ASSET=$(printf '%s\n' "$ASSETS" | \
+  jq -cs --arg name "$FILE_NAME" '[.[] | select(.name == $name)][0] // empty'); then
+  exit 1
+fi
+if [ -n "$EXISTING_ASSET" ]; then
+  if ! ASSET_URL=$(printf '%s\n' "$EXISTING_ASSET" | \
+    jq -er '.browser_download_url | select(type == "string" and length > 0)'); then
+    exit 1
+  fi
+else
+  if ! ENCODED_FILE_NAME=$(jq -rn --arg name "$FILE_NAME" '$name | @uri'); then
+    exit 1
+  fi
+  [ -n "$ENCODED_FILE_NAME" ] || exit 1
+  AUTH_TOKEN=$(gh auth token)
+  [ -n "$AUTH_TOKEN" ] || exit 1
+  if ! UPLOAD_RESPONSE=$(curl -sS --fail -X POST \
+    "${UPLOAD_URL}?name=${ENCODED_FILE_NAME}" \
+    --config - \
+    -H "Content-Type: image/png" \
+    --data-binary "@${FILE_PATH}" <<EOF
+header = "Authorization: token ${AUTH_TOKEN}"
+EOF
+  ); then
+    unset AUTH_TOKEN
+    exit 1
+  fi
+  unset AUTH_TOKEN
+  if ! ASSET_URL=$(printf '%s\n' "$UPLOAD_RESPONSE" | \
+    jq -er 'select(.state == "uploaded") | .browser_download_url | select(type == "string" and length > 0)'); then
+    exit 1
+  fi
+fi
 [ -n "$ASSET_URL" ] && [ "$ASSET_URL" != null ] || exit 1
 ```
 
 This upload applies only when the author has push access to the PR base repository, and the asset links are for that repository's collaborators viewing them in authenticated browser sessions.
 For fork-based upstream contributions without base-repository push access, skip the upload and rely on the local `FM/data/<task-id>/screenshots/` copy.
-The snippet finds or creates one draft release per PR and reuses it for every additional upload to the same PR.
+The snippet finds or creates one draft release per PR, reuses it for every additional upload to the same PR, and reuses any same-name asset on retry.
 Draft releases have no tag ref and are not addressable by tag through `gh release`, so this procedure deliberately uses raw `gh api` plus `curl`.
 The release must stay a draft forever: deleting it kills the asset URLs, while a lingering draft is cheap because drafts are invisible to non-collaborators and create no tag.
 Verify an upload from the upload response JSON, never by fetching the asset URL afterward: draft asset URLs are served only to repo collaborators' browser sessions, so anonymous and API-token requests get 404 and a curl 404 does not mean the upload failed.
