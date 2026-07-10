@@ -34,7 +34,7 @@
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # Ship briefs sanction data/<task-id>/screenshots/ as the only out-of-worktree
 # write beyond the status file, and point visual-PR screenshot guidance at
-# crew/review/pr-description-writing.md (local screenshots only, no GitHub uploads).
+# crew/review/pr-description-writing.md (local save plus PR evidence upload).
 # Ship briefs name the task branch <prefix><task-id>. The prefix comes from
 # config/branch-prefix (LOCAL, gitignored): a single line such as "nolan/" or
 # "nolan" (a missing trailing "/" is normalized). Absent or empty means the
