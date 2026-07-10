@@ -34,8 +34,9 @@
 # verification doc) uses LABEL matching (fm-<id> tab labels), never trusts a
 # stored pane id blindly: fm_backend_herdr_list_live.
 #
-# Requires: herdr (CLI + socket), jq (JSON parsing). Both are gated behind
-# selecting this backend; bin/fm-bootstrap.sh's core tool list is unaffected.
+# Requires: herdr (CLI + socket), jq (JSON parsing). herdr is gated behind
+# selecting this backend; jq is part of bin/fm-bootstrap.sh's universal tool
+# list and is rechecked here.
 
 # FM_HOME fallback: every real caller (fm-spawn.sh, fm-peek.sh, fm-send.sh,
 # fm-teardown.sh, fm-watch.sh, fm-crew-state.sh) already sets FM_HOME as a

@@ -16,7 +16,8 @@ cmux is **macOS-only** and **GUI-first** - selecting this backend means a real G
 Prerequisites:
 
 - The cmux app itself, installed from [cmux.com](https://cmux.com) or `brew install --cask cmux`, version 0.64.17 or newer.
-- Git, a verified agent harness, and the universal tools detected by [`bin/fm-bootstrap.sh`](../bin/fm-bootstrap.sh), following the authoritative [Quick Start requirements](../README.md#requirements); treehouse still provides the worktree, while cmux only provides the session.
+- Git and a verified agent harness, following the [Quick Start requirements](../README.md#requirements).
+- The universal bootstrap toolchain described in [Configuration: Toolchain](configuration.md#toolchain); treehouse still provides the worktree, while cmux only provides the session.
 - The cmux CLI binary is not guaranteed to be on `PATH` after a plain app install (see "CLI is not on PATH by default" below) - the adapter falls back to the well-known bundle path automatically, so this is not a blocker, just something to be aware of if you want to run `cmux` yourself from a shell.
 
 **One-time socket access setup (required, not optional):** cmux's control socket defaults to `automation.socketControlMode: "cmuxOnly"`, which rejects any CLI process not spawned inside cmux itself - firstmate always drives cmux from an external shell, so this must be changed before `backend=cmux` can work at all.

@@ -172,7 +172,7 @@ See [`docs/examples/review.env`](examples/review.env) for a starting point to co
 ## Toolchain
 
 On session start the first mate detects what its required toolchain is missing or too old, lists it with the exact install commands, and installs only after you say go.
-The authoritative universal tool list and install mappings live in `bin/fm-bootstrap.sh`'s header and `install_cmd`.
+The authoritative per-backend tool profiles and install mappings live in `bin/fm-bootstrap.sh`'s `TOOLS` selection and `install_cmd`.
 When bootstrap resolves `backend=orca` from `FM_BACKEND` or `config/backend`, it requires `orca`, keeps the universal `node` requirement, and skips `tmux` and `treehouse`.
 `tasks-axi` and `quota-axi` are required bootstrap tools in every profile, the same class as `lavish-axi`.
 An absent or incompatible `tasks-axi` reports `MISSING: tasks-axi (install: npm install -g tasks-axi)`; when `config/backlog-backend` is not `manual` and compatible `tasks-axi` is on `PATH`, bootstrap also prints `TASKS_AXI: available` and firstmate uses its verbs for routine backlog mutations, otherwise it hand-edits `data/backlog.md` until installation is approved and completed.

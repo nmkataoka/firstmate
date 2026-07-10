@@ -12,7 +12,8 @@ Pick tmux unless you have a specific reason to try an experimental backend (herd
 ## Prerequisites
 
 - tmux itself: `brew install tmux` (or your platform's package manager).
-- Git, a verified agent harness, and the universal tools detected by [`bin/fm-bootstrap.sh`](../bin/fm-bootstrap.sh), following the authoritative [Quick Start requirements](../README.md#requirements).
+- Git and a verified agent harness, following the [Quick Start requirements](../README.md#requirements).
+- The universal bootstrap toolchain described in [Configuration: Toolchain](configuration.md#toolchain).
 
 The first mate detects missing tools at session start and offers to install them after you approve.
 
