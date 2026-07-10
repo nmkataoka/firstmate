@@ -1,6 +1,6 @@
 PR description has two important sections: Motivation/Context and Changes. For Changes, do not regurgitate the PR diff. You should make sure to deeply understand the PR and then break it down structural into major changes. Each major change should mention the key decisions or points of interest that the reviewer would be interested in. The PR description is a high-level introduction to a PR for a reviewer. Minimize direct code references as no one is going to have the diff open side-by-side with the PR description. The PR description should be as concise as possible.
 
 For PRs with visual changes, take screenshots whenever the output is renderable: run the app, render the component, or generate the artifact - whatever the change makes visible.
-Save the screenshots locally under the task's data directory at `data/<task-id>/screenshots/`, and report that path in the done report so firstmate can point the captain at them.
+Save the screenshots locally under the task's data directory at `FM/data/<task-id>/screenshots/`, never inside the project worktree, and report that path in the done report so firstmate can point the captain at them.
 Do not upload screenshots to GitHub - not to PR comments and not to the PR body - because the web-session auth required for uploads is too annoying to automate reliably.
 (This may be revisited if an external image host is adopted.)
