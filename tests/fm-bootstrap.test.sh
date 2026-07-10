@@ -3,6 +3,7 @@
 #
 # Bootstrap prints one block or line per problem or capability fact and is silent when all
 # is well. firstmate consumes the exact 'MISSING: treehouse (install: ...)',
+# 'MISSING: curl (install: ...)', 'MISSING: jq (install: ...)',
 # 'MISSING: tasks-axi (install: ...)', 'MISSING: quota-axi (install: ...)', and
 # 'TASKS_AXI: available' lines, so those contracts are pinned verbatim. The cases
 # are table-driven over the inputs that vary: whether `treehouse get --help`
@@ -26,7 +27,7 @@ TMP_ROOT=$(fm_test_tmproot fm-bootstrap-tests)
 make_fake_toolchain() {
   local dir=$1 fakebin
   fakebin=$(fm_fakebin "$dir")
-  fm_fake_exit0 "$fakebin" tmux node gh-axi chrome-devtools-axi lavish-axi
+  fm_fake_exit0 "$fakebin" tmux node curl jq gh-axi chrome-devtools-axi lavish-axi
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
@@ -255,6 +256,30 @@ ROWS
   pass "bootstrap reports treehouse lease + tasks-axi/quota-axi bootstrap contracts"
 }
 
+test_required_screenshot_upload_tools() {
+  local tool case_dir fakebin utility utility_path out expected
+  for tool in curl jq; do
+    case_dir="$TMP_ROOT/required-$tool"
+    mkdir -p "$case_dir/home/config"
+    printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
+    if [ "$tool" = jq ]; then
+      printf '%s\n' '{"rules":[' > "$case_dir/home/config/crew-dispatch.json"
+    fi
+    fakebin=$(make_fake_toolchain "$case_dir")
+    rm -f "$fakebin/$tool"
+    for utility in bash cat dirname grep head sed tr; do
+      utility_path=$(command -v "$utility") || fail "test host must provide $utility"
+      ln -s "$utility_path" "$fakebin/$utility"
+    done
+    out=$(PATH="$fakebin" FM_BACKEND=tmux FM_HOME="$case_dir/home" \
+      FM_ROOT_OVERRIDE="$case_dir/home" FM_BOOTSTRAP_DETECT_ONLY=1 \
+      FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$BASH" "$ROOT/bin/fm-bootstrap.sh")
+    expected="MISSING: $tool (install: brew install $tool  # or the platform's package manager)"
+    [ "$out" = "$expected" ] || fail "missing $tool: expected '$expected', got: $out"
+  done
+  pass "bootstrap requires curl and jq for screenshot evidence uploads"
+}
+
 test_no_mistakes_min_version() {
   local label version mode case_dir fakebin out missing n
   missing='MISSING: no-mistakes (install: curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh)'
@@ -452,6 +477,7 @@ ROWS
 }
 
 test_bootstrap_reporting
+test_required_screenshot_upload_tools
 test_no_mistakes_min_version
 test_orca_backend_gates_orca_tool_only_when_selected
 test_fleet_sync_timeout_scales_with_origin_backed_project_count

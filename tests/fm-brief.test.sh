@@ -211,8 +211,37 @@ test_ship_project_memory_wording() {
   pass "fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar"
 }
 
+# Every ship brief (all delivery modes) must sanction the screenshots dir as
+# the only out-of-worktree write beyond the status file, and point at the
+# tracked PR-screenshot guidance; scout briefs keep their own carve-out.
+test_ship_screenshot_guidance() {
+  local home id brief
+  home="$TMP_ROOT/screenshot-home"
+  write_registry "$home"
+
+  for id_proj in "brief-shot-f1:no-registry-proj" "brief-shot-f2:direct-proj" "brief-shot-f3:local-proj"; do
+    id=${id_proj%%:*}
+    proj=${id_proj##*:}
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" "$proj" >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_present "$brief" "$id: brief was not scaffolded"
+    assert_grep "the only files you may write outside it are the status file below and screenshots under \`$home/data/$id/screenshots/\`" "$brief" \
+      "$id: ship brief lost the screenshots out-of-worktree carve-out"
+    assert_grep "take screenshots per \`$ROOT/crew/review/pr-description-writing.md\`, saved under \`$home/data/$id/screenshots/\`" "$brief" \
+      "$id: ship brief lost the visual-PR screenshot pointer"
+  done
+
+  id="brief-shot-f4"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" local-proj --scout >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "scout brief was not scaffolded"
+  assert_no_grep "pr-description-writing.md" "$brief" "scout brief should not carry the PR screenshot pointer"
+  pass "fm-brief.sh: ship briefs carry the screenshot carve-out and guidance pointer"
+}
+
 test_script_parses
 test_ship_modes_generate_clean_briefs
+test_ship_screenshot_guidance
 test_branch_prefix_knob
 test_no_mistakes_dod_wording
 test_review_flag_direct_pr

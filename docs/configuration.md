@@ -163,6 +163,7 @@ Secondmate homes inherit this file from the primary, so a secondmate's own crewm
 
 `crew/review/` holds the tracked crew-facing procedure and prompt files for the post-implementation dual-review workflow (claude + codex reviewers over a PR); generated ship briefs point crewmates at them by absolute path via `bin/fm-brief.sh --review=<full|simple>`, which is verified for direct-PR projects only.
 Firstmate chooses the tier at intake with the `pr-review-dispatch` skill; the scaffold only carries the choice.
+Independently of `--review`, every ship brief also points at `crew/review/pr-description-writing.md` for the visual-PR screenshot rule: screenshots are saved under `data/<task-id>/screenshots/`, and that doc owns the PR evidence upload and embedding mechanics.
 `bin/fm-review-launch.sh` owns the verified reviewer launch commands and per-tier prompts, and reads the optional local, gitignored `config/review.env` for reviewer models, efforts, launch flags, and per-repo guideline links (key reference in the script header).
 An absent `config/review.env` means the pilot-verified defaults apply.
 See [`docs/examples/review.env`](examples/review.env) for a starting point to copy into local `config/review.env`.
@@ -170,10 +171,9 @@ See [`docs/examples/review.env`](examples/review.env) for a starting point to co
 
 ## Toolchain
 
-On session start the first mate detects what its required toolchain is missing or too old (tmux, node, gh, treehouse with durable lease support, no-mistakes v1.31.2 or newer, gh-axi, chrome-devtools-axi, lavish-axi, tasks-axi 0.1.1 or newer with `update --archive-body`, and quota-axi), lists it with the exact install commands, and installs only after you say go.
+On session start the first mate detects what its required toolchain is missing or too old, lists it with the exact install commands, and installs only after you say go.
+The authoritative per-backend tool profiles and install mappings live in `bin/fm-bootstrap.sh`'s `TOOLS` selection and `install_cmd`.
 When bootstrap resolves `backend=orca` from `FM_BACKEND` or `config/backend`, it requires `orca`, keeps the universal `node` requirement, and skips `tmux` and `treehouse`.
-When `config/crew-dispatch.json` exists, bootstrap also requires `jq` for dispatch profile validation.
-When X mode is opted in, bootstrap also requires `curl` and `jq` before arming the relay poll shim.
 `tasks-axi` and `quota-axi` are required bootstrap tools in every profile, the same class as `lavish-axi`.
 An absent or incompatible `tasks-axi` reports `MISSING: tasks-axi (install: npm install -g tasks-axi)`; when `config/backlog-backend` is not `manual` and compatible `tasks-axi` is on `PATH`, bootstrap also prints `TASKS_AXI: available` and firstmate uses its verbs for routine backlog mutations, otherwise it hand-edits `data/backlog.md` until installation is approved and completed.
 An absent `quota-axi` reports `MISSING: quota-axi (install: npm install -g quota-axi)`; `bin/fm-dispatch-select.sh` still degrades to the first profile at runtime when quota data is unavailable.

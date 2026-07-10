@@ -32,6 +32,9 @@
 #   local-only   implement on branch, stop and report "ready in branch" (no push/PR);
 #                firstmate reviews, captain approves, firstmate merges to local main
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
+# Ship briefs sanction data/<task-id>/screenshots/ as the only out-of-worktree
+# write beyond the status file, and point visual-PR screenshot guidance at
+# crew/review/pr-description-writing.md (local save plus PR evidence upload).
 # Ship briefs name the task branch <prefix><task-id>. The prefix comes from
 # config/branch-prefix (LOCAL, gitignored): a single line such as "nolan/" or
 # "nolan" (a missing trailing "/" is normalized). Absent or empty means the
@@ -322,7 +325,7 @@ If the top-level path is the primary checkout or not the worktree you were launc
 
 # Rules
 $RULE1
-2. Stay inside this worktree; modify nothing outside it.
+2. Stay inside this worktree; the only files you may write outside it are the status file below and screenshots under \`$DATA/$ID/screenshots/\`.
 3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
 4. Report status by appending one line:
    \`echo "{state}: {one short line}" >> $STATUS_FILE\`
@@ -334,6 +337,7 @@ $RULE1
 5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
 6. If a decision belongs to a human (product choices, destructive actions, ask-user findings),
    append \`needs-decision: {summary of options}\` and stop. Firstmate will reply with the decision.
+7. If your PR has visual changes, take screenshots per \`$FM_ROOT/crew/review/pr-description-writing.md\`, saved under \`$DATA/$ID/screenshots/\`.
 
 # Project memory
 If \`AGENTS.md\` or \`CLAUDE.md\` already exists, or if this task produced durable project-intrinsic knowledge, run \`$FM_ROOT/bin/fm-ensure-agents-md.sh .\` in the worktree.
