@@ -25,5 +25,6 @@ grep -v '^kind=' "$META" > "$TMP"
 echo "kind=ship" >> "$TMP"
 mv "$TMP" "$META"
 
+HOME_Q=$(printf '%q' "$FM_HOME")
 echo "promoted $ID to ship (teardown protection restored)"
-echo "next: bin/fm-send.sh fm-$ID '<ship instructions: review scratch state with git status and git log; reset to a clean default-branch base; carry over only intended fix changes; create the task branch (fm/$ID unless config/branch-prefix overrides the prefix); implement; report done>'"
+echo "next: FM_HOME=$HOME_Q bin/fm-send.sh fm-$ID '<ship instructions: review scratch state with git status and git log; reset to a clean default-branch base; carry over only intended fix changes; create the task branch (fm/$ID unless config/branch-prefix overrides the prefix); implement; report done>'"
