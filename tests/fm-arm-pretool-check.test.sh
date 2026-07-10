@@ -105,6 +105,22 @@ assert_deny "arm in command position after a pipe" 'echo go | bin/fm-watch-arm.s
 assert_deny "quoted pkill target is still a broad pkill" "pkill -f 'fm-watch'"
 assert_deny "nested shell payload with a quoted pkill" "bash -lc 'pkill -f fm-watch'"
 
+# Separator-neutralized projection: a QUOTED command word cannot dodge the
+# positional check, and wrapper words (timeout, flock, ...) with flag/numeric
+# arguments still count as command position - while quoted prose containing a
+# separator before a script name stays irrelevant.
+assert_deny "double-quoted arm command word backgrounded" '"bin/fm-watch-arm.sh" &'
+assert_deny "single-quoted arm command word backgrounded" "'bin/fm-watch-arm.sh' &"
+# shellcheck disable=SC2016  # single quotes are deliberate: the literal $FM_ROOT-prefixed command text, not an expansion
+assert_deny "quoted variable-prefixed arm backgrounded" '"$FM_ROOT/bin/fm-watch-arm.sh" &'
+assert_deny "timeout-wrapped arm backgrounded" 'timeout 60 bin/fm-watch-arm.sh &'
+assert_allow "quoted prose with a semicolon before the script name" 'no-mistakes axi respond --action fix --instructions "reword X; never mention bin/fm-watch-arm.sh"'
+
+# Nested-evaluator scoping: a bare 'eval' as an argument word must not turn
+# quoted segments into command payloads (observed false-denies, 2026-07-10).
+assert_allow "git grep for the word eval with a quoted watcher pathspec" "git grep -n eval -- 'bin/fm-watch.sh' | head -5"
+assert_allow "grep for the word eval in a quoted watcher path, redirected" "grep eval 'bin/fm-watch.sh' > /tmp/out"
+
 # Absolute-path forms (upstream-documented gap, closed): the rendered recipes
 # substitute absolute paths; the blessing and the denies must cover both.
 assert_allow "absolute-path arm standalone" 'exec /home/fm/ht/firstmate/bin/fm-watch-arm.sh'

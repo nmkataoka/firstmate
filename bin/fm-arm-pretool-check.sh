@@ -39,13 +39,17 @@
 # command relevant when it appears in COMMAND POSITION: at the start of the
 # text or right after a statement separator (;, &, |, a subshell/brace open,
 # a backtick), optionally preceded by env assignments and run-prefix words
-# (exec, eval, nohup, ...). Position is judged on the quote-stripped command
-# text, plus - for nested shell evaluators (bash -c, eval) - inside each
-# quoted payload, so `bash -lc 'bin/fm-watch-arm.sh &'` stays denied. Quoted
-# string content and plain arguments never trigger relevance: on 2026-07-10
-# the previous anywhere-in-text match false-denied read-only grep/git
-# commands whose search patterns named fm-watch*, and a `no-mistakes axi
-# respond --instructions "..."` whose prose named the scripts.
+# (exec, nohup, timeout, ...) with their flag/numeric arguments. Position is
+# judged on the quote-stripped command text, on a separator-neutralized
+# projection that keeps quoted content so a quoted command word like
+# `"bin/fm-watch-arm.sh" &` cannot dodge the check, and - for nested shell
+# evaluators (bash -c, eval, themselves required in command position) -
+# inside each quoted payload, so `bash -lc 'bin/fm-watch-arm.sh &'` stays
+# denied. Quoted string content and plain arguments never trigger relevance:
+# on 2026-07-10 the previous anywhere-in-text match false-denied read-only
+# grep/git commands whose search patterns named fm-watch*, and a
+# `no-mistakes axi respond --instructions "..."` whose prose named the
+# scripts.
 #
 # Usage:
 #   <PreToolUse JSON on stdin> | bin/fm-arm-pretool-check.sh
@@ -190,56 +194,37 @@ is_primary_checkout() {
 
 # Command position: start of the text or right after a statement separator or
 # subshell/brace/backtick open, optionally preceded by env assignments and
-# run-prefix words that still execute the next word.
-CMD_POS_PREFIX='(^|[;&|({`])[[:space:]]*((exec|eval|command|builtin|nohup|setsid|time|env|sudo|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*'
+# run-prefix words that still execute the next word. Flag and numeric tokens
+# are accepted as wrapper arguments (timeout 60, nice -n 5, stdbuf -oL) - the
+# chain must still START at an allowlisted word, so an argument to grep or
+# echo can never open a prefix chain.
+CMD_POS_PREFIX='(^|[;&|({`])[[:space:]]*((exec|eval|command|builtin|nohup|setsid|time|env|sudo|timeout|flock|stdbuf|nice|ionice|-[^[:space:]]+|[0-9][^[:space:]]*|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*'
 WATCH_SCRIPT_WORD='[^[:space:];|&]*(fm-watch-arm(\.sh)?\b|fm-watch-checkpoint\.sh\b|fm-watch\.sh\b)'
 PKILL_WORD='[^[:space:];|&]*pkill\b'
 
-# Remove quoted string content (and the quote delimiters) so grep patterns,
-# commit messages, and --instructions prose never look like commands; each
-# removed segment leaves one space so word boundaries survive.
-strip_quoted_content() {
-  local cmd=$1
-  local i len ch out="" in_single=0 in_double=0 escaped=0
+# One quote/escape walker for every quoted-text projection, parameterized on
+# emit mode so the escape and quote rules cannot drift between projections:
+#   strip    - remove quoted content (and the quote delimiters) so grep
+#              patterns, commit messages, and --instructions prose never look
+#              like commands; each opening quote leaves one space so word
+#              boundaries survive.
+#   segments - emit each quoted segment's content on its own line. A quoted
+#              argument to a nested shell evaluator (bash -c, eval) is itself
+#              a command string, so command position is re-judged inside it.
+#   neutral  - remove only the quote delimiters, keeping quoted content, with
+#              statement separators inside quotes neutralized to a space. A
+#              quoted command word ("bin/fm-watch-arm.sh" &) stays visible in
+#              command position, while quoted prose containing ';' or a
+#              newline cannot fabricate a command-position anchor.
+quote_walk() {
+  local mode=$1 cmd=$2
+  local i len ch out="" seg="" in_single=0 in_double=0 escaped=0
   len=${#cmd}
   for ((i = 0; i < len; i++)); do
     ch=${cmd:i:1}
     if [ "$escaped" -eq 1 ]; then
       escaped=0
-      [ "$in_single" -eq 0 ] && [ "$in_double" -eq 0 ] && out+=$ch
-      continue
-    fi
-    if [ "$in_single" -eq 0 ] && [ "$ch" = "\\" ]; then
-      escaped=1
-      continue
-    fi
-    if [ "$in_double" -eq 0 ] && [ "$ch" = "'" ]; then
-      if [ "$in_single" -eq 0 ]; then in_single=1; out+=" "; else in_single=0; fi
-      continue
-    fi
-    if [ "$in_single" -eq 0 ] && [ "$ch" = '"' ]; then
-      if [ "$in_double" -eq 0 ]; then in_double=1; out+=" "; else in_double=0; fi
-      continue
-    fi
-    if [ "$in_single" -eq 0 ] && [ "$in_double" -eq 0 ]; then
-      out+=$ch
-    fi
-  done
-  printf '%s' "$out"
-}
-
-# Emit each quoted segment's content on its own line. A quoted argument to a
-# nested shell evaluator (bash -c, eval) is itself a command string, so
-# command position is re-judged inside it.
-quoted_segments() {
-  local cmd=$1
-  local i len ch seg="" in_single=0 in_double=0 escaped=0
-  len=${#cmd}
-  for ((i = 0; i < len; i++)); do
-    ch=${cmd:i:1}
-    if [ "$escaped" -eq 1 ]; then
-      escaped=0
-      { [ "$in_single" -eq 1 ] || [ "$in_double" -eq 1 ]; } && seg+=$ch
+      quote_walk_emit
       continue
     fi
     if [ "$in_single" -eq 0 ] && [ "$ch" = "\\" ]; then
@@ -249,26 +234,52 @@ quoted_segments() {
     if [ "$in_double" -eq 0 ] && [ "$ch" = "'" ]; then
       if [ "$in_single" -eq 0 ]; then
         in_single=1
+        [ "$mode" = "strip" ] && out+=" "
       else
         in_single=0
-        printf '%s\n' "$seg"
-        seg=""
+        [ "$mode" = "segments" ] && { printf '%s\n' "$seg"; seg=""; }
       fi
       continue
     fi
     if [ "$in_single" -eq 0 ] && [ "$ch" = '"' ]; then
       if [ "$in_double" -eq 0 ]; then
         in_double=1
+        [ "$mode" = "strip" ] && out+=" "
       else
         in_double=0
-        printf '%s\n' "$seg"
-        seg=""
+        [ "$mode" = "segments" ] && { printf '%s\n' "$seg"; seg=""; }
       fi
       continue
     fi
-    { [ "$in_single" -eq 1 ] || [ "$in_double" -eq 1 ]; } && seg+=$ch
+    quote_walk_emit
   done
-  [ -n "$seg" ] && printf '%s\n' "$seg"
+  if [ "$mode" = "segments" ]; then
+    [ -n "$seg" ] && printf '%s\n' "$seg"
+  else
+    printf '%s' "$out"
+  fi
+  return 0
+}
+
+# Dynamic-scope helper for quote_walk only: appends the current character to
+# the active projection according to mode and quote state.
+quote_walk_emit() {
+  local quoted=0
+  { [ "$in_single" -eq 1 ] || [ "$in_double" -eq 1 ]; } && quoted=1
+  case "$mode" in
+    strip)
+      [ "$quoted" -eq 0 ] && out+=$ch
+      ;;
+    segments)
+      [ "$quoted" -eq 1 ] && seg+=$ch
+      ;;
+    neutral)
+      if [ "$quoted" -eq 1 ]; then
+        case "$ch" in ';'|'&'|'|'|'('|'{'|'`'|$'\n') ch=' ' ;; esac
+      fi
+      out+=$ch
+      ;;
+  esac
   return 0
 }
 
@@ -278,9 +289,10 @@ watch_script_in_command_position() {
 
 is_relevant() {
   local cmd=$1
-  watch_script_in_command_position "$(strip_quoted_content "$cmd")" && return 0
+  watch_script_in_command_position "$(quote_walk strip "$cmd")" && return 0
+  watch_script_in_command_position "$(quote_walk neutral "$cmd")" && return 0
   if has_nested_shell_evaluator "$cmd"; then
-    watch_script_in_command_position "$(quoted_segments "$cmd")" && return 0
+    watch_script_in_command_position "$(quote_walk segments "$cmd")" && return 0
   fi
   return 1
 }
@@ -291,11 +303,11 @@ is_relevant() {
 # words does not.
 is_pkill_watch() {
   local cmd=$1 segs
-  if printf '%s' "$(strip_quoted_content "$cmd")" | grep -Eq "${CMD_POS_PREFIX}${PKILL_WORD}"; then
+  if printf '%s' "$(quote_walk strip "$cmd")" | grep -Eq "${CMD_POS_PREFIX}${PKILL_WORD}"; then
     printf '%s' "$cmd" | grep -Eq '\bpkill\b[^|;&]*fm-watch' && return 0
   fi
   if has_nested_shell_evaluator "$cmd"; then
-    segs=$(quoted_segments "$cmd")
+    segs=$(quote_walk segments "$cmd")
     if printf '%s' "$segs" | grep -Eq "${CMD_POS_PREFIX}${PKILL_WORD}"; then
       printf '%s' "$segs" | grep -Eq '\bpkill\b[^|;&]*fm-watch' && return 0
     fi
@@ -344,11 +356,16 @@ has_bare_background_operator() {
   return 1
 }
 
+# The evaluator itself must sit in command position on the quote-stripped
+# text - a bare 'eval' or 'bash -c' appearing as an argument word (a grep
+# pattern, a git pathspec) must not turn every quoted segment into a command
+# payload.
 has_nested_shell_evaluator() {
-  local cmd=$1
-  printf '%s' "$cmd" | grep -Eq \
-    -e '(^|[[:space:];|&])([^[:space:];|&]*/)?(bash|sh|zsh)([[:space:]][^;|&]*)?[[:space:]]-[^[:space:]]*c([[:space:]]|$)' \
-    -e '(^|[[:space:];|&])eval([[:space:]]|$)'
+  local stripped
+  stripped=$(quote_walk strip "$1")
+  printf '%s' "$stripped" | grep -Eq \
+    -e "${CMD_POS_PREFIX}([^[:space:];|&]*/)?(bash|sh|zsh)([[:space:]][^;|&]*)?[[:space:]]-[^[:space:]]*c([[:space:]]|\$)" \
+    -e "${CMD_POS_PREFIX}eval([[:space:]]|\$)"
 }
 
 nested_shell_projection() {
