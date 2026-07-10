@@ -452,8 +452,8 @@ cd projects/<name> && no-mistakes init && no-mistakes doctor
 It does **not** vendor any skill into the project - the no-mistakes skill is user-level now, available to every crewmate without a per-project copy.
 So init produces nothing to commit; it is a sanctioned exception to the never-write rule (section 1) only in that it runs git remote/config setup inside the project.
 Touch nothing else.
-`local-only` projects skip init entirely - they have no remote at all.
-`direct-PR` projects also skip init, except when the captain has put the project on the review-only pipeline flow (`crew/review/review-procedure.md`): that flow's review step runs through the gate, so initialize the clone before its first review-step run.
+`direct-PR` and `local-only` projects skip init entirely - they do not run the pipeline (`local-only` has no remote at all).
+The exception is a `direct-PR` project on the review-only pipeline flow (`crew/review/review-procedure.md`), whose review step runs through the gate: initialize its clone before the first review-step run.
 
 If `no-mistakes doctor` reports problems, fix the environment (auth, daemon) before dispatching work to that project.
 

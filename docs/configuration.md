@@ -161,7 +161,7 @@ Secondmate homes inherit this file from the primary, so a secondmate's own crewm
 
 ## Post-implementation review (crew/review/, config/review.env)
 
-`crew/review/` holds the tracked crew-facing procedure and prompt files for the post-implementation dual-review workflow (a review-only no-mistakes pipeline pass plus a codex second reviewer over a PR); generated ship briefs point crewmates at them by absolute path via `bin/fm-brief.sh --review=<full|simple>`, which is verified for direct-PR projects only.
+`crew/review/` holds the tracked crew-facing procedure and prompt files for the post-implementation dual-review workflow (a review-only no-mistakes pipeline pass plus a claude second reviewer over a PR); generated ship briefs point crewmates at them by absolute path via `bin/fm-brief.sh --review=<full|simple>`, which is verified for direct-PR projects only.
 Firstmate chooses the tier at intake with the `pr-review-dispatch` skill; the scaffold only carries the choice.
 Independently of `--review`, every ship brief also points at `crew/review/pr-description-writing.md` for the visual-PR screenshot rule: screenshots are saved under `data/<task-id>/screenshots/`, and that doc owns the PR evidence upload and embedding mechanics.
 `bin/fm-review-launch.sh` owns the verified reviewer launch commands and per-tier prompts, and reads the optional local, gitignored `config/review.env` for reviewer models, efforts, launch flags, and per-repo guideline links (key reference in the script header).
