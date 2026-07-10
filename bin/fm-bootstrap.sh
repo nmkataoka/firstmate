@@ -466,10 +466,7 @@ crew_dispatch_validate() {
   local file err
   file="$CONFIG/crew-dispatch.json"
   [ -f "$file" ] || return 0
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "MISSING: jq (install: $(install_cmd jq))"
-    return 0
-  fi
+  command -v jq >/dev/null 2>&1 || return 0
   if ! jq -e . "$file" >/dev/null 2>&1; then
     echo "CREW_DISPATCH: invalid config/crew-dispatch.json - malformed JSON"
     return 0

@@ -171,10 +171,9 @@ See [`docs/examples/review.env`](examples/review.env) for a starting point to co
 
 ## Toolchain
 
-On session start the first mate detects what its required toolchain is missing or too old (tmux, node, gh, treehouse with durable lease support, no-mistakes v1.31.2 or newer, gh-axi, chrome-devtools-axi, lavish-axi, tasks-axi 0.1.1 or newer with `update --archive-body`, and quota-axi), lists it with the exact install commands, and installs only after you say go.
+On session start the first mate detects what its required toolchain is missing or too old, lists it with the exact install commands, and installs only after you say go.
+The authoritative universal tool list and install mappings live in `bin/fm-bootstrap.sh`'s header and `install_cmd`.
 When bootstrap resolves `backend=orca` from `FM_BACKEND` or `config/backend`, it requires `orca`, keeps the universal `node` requirement, and skips `tmux` and `treehouse`.
-When `config/crew-dispatch.json` exists, bootstrap also requires `jq` for dispatch profile validation.
-When X mode is opted in, bootstrap also requires `curl` and `jq` before arming the relay poll shim.
 `tasks-axi` and `quota-axi` are required bootstrap tools in every profile, the same class as `lavish-axi`.
 An absent or incompatible `tasks-axi` reports `MISSING: tasks-axi (install: npm install -g tasks-axi)`; when `config/backlog-backend` is not `manual` and compatible `tasks-axi` is on `PATH`, bootstrap also prints `TASKS_AXI: available` and firstmate uses its verbs for routine backlog mutations, otherwise it hand-edits `data/backlog.md` until installation is approved and completed.
 An absent `quota-axi` reports `MISSING: quota-axi (install: npm install -g quota-axi)`; `bin/fm-dispatch-select.sh` still degrades to the first profile at runtime when quota data is unavailable.

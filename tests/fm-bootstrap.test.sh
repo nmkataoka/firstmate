@@ -262,6 +262,9 @@ test_required_screenshot_upload_tools() {
     case_dir="$TMP_ROOT/required-$tool"
     mkdir -p "$case_dir/home/config"
     printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
+    if [ "$tool" = jq ]; then
+      printf '%s\n' '{"rules":[' > "$case_dir/home/config/crew-dispatch.json"
+    fi
     fakebin=$(make_fake_toolchain "$case_dir")
     rm -f "$fakebin/$tool"
     for utility in bash cat dirname grep head sed tr; do

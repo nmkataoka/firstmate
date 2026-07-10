@@ -19,7 +19,7 @@ Firstmate only drives the `herdr` CLI as a separate process, which carries no AG
 Prerequisites:
 
 - `herdr` itself, protocol 14 or newer (installed 0.7.1 verified) - see [herdr.dev](https://herdr.dev) for install instructions.
-- `jq`, required to parse herdr's JSON output: `brew install jq` (or your platform's package manager).
+- `jq`, required to parse herdr's JSON output and covered by the universal detection documented in `bin/fm-bootstrap.sh`.
 - The same universal requirements as tmux (a verified crew harness, git with GitHub auth, node, treehouse, no-mistakes, gh-axi, chrome-devtools-axi, lavish-axi, tasks-axi 0.1.1 or newer with `update --archive-body`, and quota-axi); treehouse still provides the worktree, herdr only provides the session.
 
 Select herdr by putting `herdr` in a local `config/backend` file - the durable way to pick it - or by exporting `FM_BACKEND=herdr` when you launch your harness for a one-off session; telling the first mate in chat to use herdr also works.
@@ -35,7 +35,7 @@ You do not need to attach for routine supervision: from an active firstmate sess
 
 Verify it works by spawning a trivial task with `--backend herdr` and confirming the task's meta records `backend=herdr` plus `herdr_session=`, `herdr_workspace_id=`, `herdr_tab_id=`, and `herdr_pane_id=`; the workspace for your home should show the new `fm-<id>` tab.
 
-Limitations: herdr is experimental, still carries the open gaps documented below, and its `herdr` and `jq` dependencies are not yet part of `bin/fm-bootstrap.sh`'s backend-specific tool detection (the version/tool gate happens at spawn time instead).
+Limitations: herdr is experimental, still carries the open gaps documented below, and its `herdr` dependency is not yet part of `bin/fm-bootstrap.sh`'s backend-specific tool detection, while `jq` is covered universally (the herdr version/tool gate happens at spawn time instead).
 Resolved backend evidence, including the 2026-07-06 symlinked-project-prefix isolation fix, is kept in the same follow-up log for auditability.
 
 ## Status: experimental
@@ -576,7 +576,7 @@ With that fix, all four scenarios (A: partial-input deferral, B: swallowed-Enter
 - **No `events.subscribe` native push.** The busy-state semantic read (`agent.get`) is consumed through the EXISTING `fm-watch.sh` poll loop (same 15-second cadence as every other window), not a persistent async subscriber pushing events directly into the wake queue.
   This satisfies the adopted design's "polling remains as the reconciliation backstop" language without a separate watcher rewrite; herdr tasks already get materially better busy-state accuracy than tmux's regex guessing from this alone.
   A genuine `events.subscribe`-driven push is a reasonable follow-up, not implemented here.
-- **Backend-specific bootstrap detection is absent.** `bin/fm-bootstrap.sh` still requires `tmux` outside Orca mode, and does not yet conditionally add `herdr` and `jq` when a backend selection resolves to herdr.
+- **Backend-specific bootstrap detection is absent.** `bin/fm-bootstrap.sh` still requires `tmux` outside Orca mode and does not yet conditionally add `herdr` when a backend selection resolves to herdr; `jq` is already covered by universal detection.
   The version/tool gate happens at spawn time instead and refuses loudly, so this is bootstrap-detection polish, not a functional gap.
 - **RESOLVED: worktree-discovery isolation guard's symlinked-project-prefix false refusal.** Originally discovered while building the runtime-backend-auto-detection real smoke test (`tests/fm-backend-autodetect-smoke.test.sh`), which needed a scratch project.
   `fm-spawn.sh`'s `PROJ_ABS` was a LOGICAL `cd && pwd` (symlink components kept), while herdr's `foreground_cwd` (and real tmux's `pane_current_path`, on the same OS-level cwd primitive) report the PHYSICALLY resolved path.
