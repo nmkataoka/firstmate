@@ -151,6 +151,22 @@ test_large_irrelevant_command_is_fast_allow() {
   pass "pre-filter: 50KB irrelevant command is a fast allow (${elapsed}s)"
 }
 
+# A large command that mentions fm-watch in ARGUMENT position passes the
+# pre-filter and runs the projection walkers, so those must stay linear
+# (observed residual, 2026-07-10: ~7s on a 40KB anchored command with the
+# per-character bash walker; the awk walker takes a fraction of a second).
+test_large_anchored_command_is_fast_allow() {
+  local big rc start elapsed
+  big=$(head -c 40000 /dev/zero | tr '\0' 'x')
+  start=$SECONDS
+  "$CHECK" --command "echo $big fm-watch-arm.sh mention in argument position" >/dev/null 2>&1
+  rc=$?
+  elapsed=$((SECONDS - start))
+  [ "$rc" -eq 0 ] || fail "a large command with an argument-position fm-watch mention must be allowed, got exit $rc"
+  [ "$elapsed" -le 5 ] || fail "the projection walkers must stay linear on a large anchored command, took ${elapsed}s"
+  pass "projection walkers: 40KB anchored command is a fast allow (${elapsed}s)"
+}
+
 # --- CLI parsing -------------------------------------------------------------
 
 test_command_equals_form() {
@@ -432,6 +448,7 @@ test_shellcheck_clean() {
 }
 
 test_large_irrelevant_command_is_fast_allow
+test_large_anchored_command_is_fast_allow
 test_command_equals_form
 test_background_flag_accepted_and_non_gating
 test_unknown_flag_errors

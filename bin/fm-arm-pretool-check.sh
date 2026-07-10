@@ -51,8 +51,10 @@
 # `no-mistakes axi respond --instructions "..."` whose prose named the
 # scripts. A raw-substring pre-filter (fm-watch or pkill anywhere in the
 # quote-delimiter-free text) short-circuits every other command before any
-# projection work, so the per-character walkers never run on the ordinary
-# large commands this hook sees on every shell call.
+# projection work, so the projection walkers never run on the ordinary
+# large commands this hook sees on every shell call, and the quote walker
+# itself is a linear streaming awk pass so even anchor-containing large
+# commands stay fast.
 #
 # Usage:
 #   <PreToolUse JSON on stdin> | bin/fm-arm-pretool-check.sh
@@ -219,71 +221,54 @@ PKILL_WORD='[^[:space:];|&]*pkill\b'
 #              quoted command word ("bin/fm-watch-arm.sh" &) stays visible in
 #              command position, while quoted prose containing ';' or a
 #              newline cannot fabricate a command-position anchor.
+# Implemented as a single streaming awk pass so the projection stays linear
+# on large inputs (a bash per-character out+=ch walker is quadratic and
+# stalled the hook on multi-KB commands).
 quote_walk() {
   local mode=$1 cmd=$2
-  local LC_ALL=C
-  local i len ch out="" seg="" in_single=0 in_double=0 escaped=0
-  len=${#cmd}
-  for ((i = 0; i < len; i++)); do
-    ch=${cmd:i:1}
-    if [ "$escaped" -eq 1 ]; then
-      escaped=0
-      quote_walk_emit
-      continue
-    fi
-    if [ "$in_single" -eq 0 ] && [ "$ch" = "\\" ]; then
-      escaped=1
-      continue
-    fi
-    if [ "$in_double" -eq 0 ] && [ "$ch" = "'" ]; then
-      if [ "$in_single" -eq 0 ]; then
-        in_single=1
-        [ "$mode" = "strip" ] && out+=" "
-      else
-        in_single=0
-        [ "$mode" = "segments" ] && { printf '%s\n' "$seg"; seg=""; }
-      fi
-      continue
-    fi
-    if [ "$in_single" -eq 0 ] && [ "$ch" = '"' ]; then
-      if [ "$in_double" -eq 0 ]; then
-        in_double=1
-        [ "$mode" = "strip" ] && out+=" "
-      else
-        in_double=0
-        [ "$mode" = "segments" ] && { printf '%s\n' "$seg"; seg=""; }
-      fi
-      continue
-    fi
-    quote_walk_emit
-  done
-  if [ "$mode" = "segments" ]; then
-    [ -n "$seg" ] && printf '%s\n' "$seg"
-  else
-    printf '%s' "$out"
-  fi
-  return 0
-}
-
-# Dynamic-scope helper for quote_walk only: appends the current character to
-# the active projection according to mode and quote state.
-quote_walk_emit() {
-  local quoted=0
-  { [ "$in_single" -eq 1 ] || [ "$in_double" -eq 1 ]; } && quoted=1
-  case "$mode" in
-    strip)
-      [ "$quoted" -eq 0 ] && out+=$ch
-      ;;
-    segments)
-      [ "$quoted" -eq 1 ] && seg+=$ch
-      ;;
-    neutral)
-      if [ "$quoted" -eq 1 ]; then
-        case "$ch" in ';'|'&'|'|'|'('|'{'|'`'|$'\n') ch=' ' ;; esac
-      fi
-      out+=$ch
-      ;;
-  esac
+  printf '%s' "$cmd" | LC_ALL=C awk -v mode="$mode" -v sq="'" '
+    function emit(ch,  quoted) {
+      quoted = (in_single || in_double)
+      if (mode == "strip") {
+        if (!quoted) printf "%s", ch
+      } else if (mode == "segments") {
+        if (quoted) { printf "%s", ch; seg_len++ }
+      } else {
+        if (quoted && (ch == ";" || ch == "&" || ch == "|" || ch == "(" || ch == "{" || ch == "`" || ch == "\n")) ch = " "
+        printf "%s", ch
+      }
+    }
+    { text = text sep $0; sep = "\n" }
+    END {
+      n = length(text)
+      for (i = 1; i <= n; i++) {
+        ch = substr(text, i, 1)
+        if (escaped) { escaped = 0; emit(ch); continue }
+        if (!in_single && ch == "\\") { escaped = 1; continue }
+        if (!in_double && ch == sq) {
+          if (!in_single) {
+            in_single = 1
+            if (mode == "strip") printf " "
+          } else {
+            in_single = 0
+            if (mode == "segments") { printf "\n"; seg_len = 0 }
+          }
+          continue
+        }
+        if (!in_single && ch == "\"") {
+          if (!in_double) {
+            in_double = 1
+            if (mode == "strip") printf " "
+          } else {
+            in_double = 0
+            if (mode == "segments") { printf "\n"; seg_len = 0 }
+          }
+          continue
+        }
+        emit(ch)
+      }
+      if (mode == "segments" && seg_len > 0) printf "\n"
+    }'
   return 0
 }
 
