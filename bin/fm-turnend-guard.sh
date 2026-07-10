@@ -64,6 +64,8 @@ STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '.stop_hook_active // false' 2
 # non-worktree checkout is never one of those). A linked worktree's git-dir
 # lives under the main repo's .git/worktrees/<name> and differs from the common
 # (shared) git-dir; only the main, non-worktree checkout has the two equal.
+# bin/fm-arm-pretool-check.sh mirrors this predicate for its deny scoping
+# (docs/arm-pretool-check.md); keep the two in sync.
 [ -f "$FM_ROOT/.fm-secondmate-home" ] && exit 0
 GIT_DIR=$(git -C "$FM_ROOT" rev-parse --git-dir 2>/dev/null) || exit 0
 GIT_COMMON_DIR=$(git -C "$FM_ROOT" rev-parse --git-common-dir 2>/dev/null) || exit 0

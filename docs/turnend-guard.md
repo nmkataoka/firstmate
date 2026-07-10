@@ -20,6 +20,7 @@ The guard first scopes itself to the real primary checkout.
 It is inert in secondmate homes because `.fm-secondmate-home` exists there.
 It is inert in crewmate and scout worktrees because firstmate provisions them as linked git worktrees, where `git rev-parse --git-dir` differs from `git rev-parse --git-common-dir`.
 It also requires `AGENTS.md`, `bin/`, and the effective state directory to exist.
+The pre-arm seatbelt scopes its denies with this same primary-checkout predicate, minus the state-directory requirement (`docs/arm-pretool-check.md` "Primary-checkout scoping"), so keep the two in sync when changing it.
 
 For an in-scope primary checkout, it counts in-flight work from `state/*.meta`.
 If no task is in flight, it exits silently.

@@ -25,6 +25,37 @@
 # docs/arm-pretool-check.md for the full contract and the per-harness wiring
 # audit.
 #
+# SCOPE: denies fire only from firstmate's PRIMARY checkout. The tracked hook
+# files ship in every worktree of this repo (crewmate/scout task worktrees,
+# secondmate homes), but the seatbelt protects the primary's supervision loop,
+# not workers. Outside the primary - linked worktree, secondmate-home marker,
+# non-repo root, or git unavailable - every command is a silent allow, using
+# the same primary predicate as bin/fm-turnend-guard.sh (keyed off this
+# script's own location, honoring FM_ROOT_OVERRIDE; tests use the override).
+# The check runs lazily, only when a deny is about to fire, so the common
+# allow path never pays the git calls.
+#
+# RELEVANCE is positional. A watcher-script name (or pkill) only makes a
+# command relevant when it appears in COMMAND POSITION: at the start of the
+# text or right after a statement separator (;, &, |, a subshell/brace open,
+# a backtick), optionally preceded by env assignments and run-prefix words
+# (exec, nohup, timeout, ...) with their flag/numeric arguments. Position is
+# judged on the quote-stripped command text, on a separator-neutralized
+# projection that keeps quoted content so a quoted command word like
+# `"bin/fm-watch-arm.sh" &` cannot dodge the check, and - for nested shell
+# evaluators (bash -c, eval, themselves required in command position) -
+# inside each quoted payload, so `bash -lc 'bin/fm-watch-arm.sh &'` stays
+# denied. Quoted string content and plain arguments never trigger relevance:
+# on 2026-07-10 the previous anywhere-in-text match false-denied read-only
+# grep/git commands whose search patterns named fm-watch*, and a
+# `no-mistakes axi respond --instructions "..."` whose prose named the
+# scripts. A raw-substring pre-filter (fm-watch or pkill anywhere in the
+# quote-delimiter-free text) short-circuits every other command before any
+# projection work, so the projection walkers never run on the ordinary
+# large commands this hook sees on every shell call, and the quote walker
+# itself is a linear streaming awk pass so even anchor-containing large
+# commands stay fast.
+#
 # Usage:
 #   <PreToolUse JSON on stdin> | bin/fm-arm-pretool-check.sh
 #   bin/fm-arm-pretool-check.sh --command '<cmd>' [--background true|false]
@@ -69,6 +100,9 @@
 # every other caller (Grok, Codex, tests, CLI use) keeps the default dual
 # output.
 set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 CMD=""
 CMD_SET=0
@@ -142,24 +176,141 @@ fi
 
 [ -n "$CMD" ] || exit 0
 
-# --- pattern detection --------------------------------------------------------
+# --- primary scoping ----------------------------------------------------------
 
-is_relevant() {
-  printf '%s' "$1" | grep -Eq \
-    -e 'fm-watch-arm(\.sh)?\b' \
-    -e 'fm-watch-checkpoint\.sh\b' \
-    -e 'fm-watch\.sh\b' \
-    -e '\bpkill\b[^|;&]*fm-watch'
+# Same predicate as bin/fm-turnend-guard.sh: only the main, non-worktree
+# checkout that looks firstmate-shaped is the primary. A linked worktree's
+# git-dir lives under the main repo's .git/worktrees/<name> and differs from
+# the common git-dir; a git-cloned secondmate home carries the
+# .fm-secondmate-home marker instead. Anything unprovable fails open to
+# non-primary (allow) - a seatbelt must never crash-deny.
+is_primary_checkout() {
+  [ -f "$FM_ROOT/.fm-secondmate-home" ] && return 1
+  local git_dir git_common_dir
+  git_dir=$(git -C "$FM_ROOT" rev-parse --git-dir 2>/dev/null) || return 1
+  git_common_dir=$(git -C "$FM_ROOT" rev-parse --git-common-dir 2>/dev/null) || return 1
+  [ "$git_dir" = "$git_common_dir" ] || return 1
+  [ -f "$FM_ROOT/AGENTS.md" ] || return 1
+  [ -d "$FM_ROOT/bin" ] || return 1
+  return 0
 }
 
+# --- pattern detection --------------------------------------------------------
+
+# Command position: start of the text or right after a statement separator or
+# subshell/brace/backtick open, optionally preceded by env assignments and
+# run-prefix words that still execute the next word. Flag and numeric tokens
+# are accepted as wrapper arguments (timeout 60, nice -n 5, stdbuf -oL) - the
+# chain must still START at an allowlisted word, so an argument to grep or
+# echo can never open a prefix chain.
+CMD_POS_PREFIX='(^|[;&|({`])[[:space:]]*((exec|eval|command|builtin|nohup|setsid|time|env|sudo|timeout|flock|stdbuf|nice|ionice|-[^[:space:]]+|[0-9][^[:space:]]*|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*'
+WATCH_SCRIPT_WORD='[^[:space:];|&]*(fm-watch-arm(\.sh)?\b|fm-watch-checkpoint\.sh\b|fm-watch\.sh\b)'
+PKILL_WORD='[^[:space:];|&]*pkill\b'
+
+# One quote/escape walker for every quoted-text projection, parameterized on
+# emit mode so the escape and quote rules cannot drift between projections:
+#   strip    - remove quoted content (and the quote delimiters) so grep
+#              patterns, commit messages, and --instructions prose never look
+#              like commands; each opening quote leaves one space so word
+#              boundaries survive.
+#   segments - emit each quoted segment's content on its own line. A quoted
+#              argument to a nested shell evaluator (bash -c, eval) is itself
+#              a command string, so command position is re-judged inside it.
+#   neutral  - remove only the quote delimiters, keeping quoted content, with
+#              statement separators inside quotes neutralized to a space. A
+#              quoted command word ("bin/fm-watch-arm.sh" &) stays visible in
+#              command position, while quoted prose containing ';' or a
+#              newline cannot fabricate a command-position anchor.
+# Implemented as a single streaming awk pass so the projection stays linear
+# on large inputs (a bash per-character out+=ch walker is quadratic and
+# stalled the hook on multi-KB commands).
+quote_walk() {
+  local mode=$1 cmd=$2
+  printf '%s' "$cmd" | LC_ALL=C awk -v mode="$mode" -v sq="'" '
+    function emit(ch,  quoted) {
+      quoted = (in_single || in_double)
+      if (mode == "strip") {
+        if (!quoted) printf "%s", ch
+      } else if (mode == "segments") {
+        if (quoted) { printf "%s", ch; seg_len++ }
+      } else {
+        if (quoted && (ch == ";" || ch == "&" || ch == "|" || ch == "(" || ch == "{" || ch == "`" || ch == "\n")) ch = " "
+        printf "%s", ch
+      }
+    }
+    { text = text sep $0; sep = "\n" }
+    END {
+      n = length(text)
+      for (i = 1; i <= n; i++) {
+        ch = substr(text, i, 1)
+        if (escaped) { escaped = 0; emit(ch); continue }
+        if (!in_single && ch == "\\") { escaped = 1; continue }
+        if (!in_double && ch == sq) {
+          if (!in_single) {
+            in_single = 1
+            if (mode == "strip") printf " "
+          } else {
+            in_single = 0
+            if (mode == "segments") { printf "\n"; seg_len = 0 }
+          }
+          continue
+        }
+        if (!in_single && ch == "\"") {
+          if (!in_double) {
+            in_double = 1
+            if (mode == "strip") printf " "
+          } else {
+            in_double = 0
+            if (mode == "segments") { printf "\n"; seg_len = 0 }
+          }
+          continue
+        }
+        emit(ch)
+      }
+      if (mode == "segments" && seg_len > 0) printf "\n"
+    }'
+  return 0
+}
+
+watch_script_in_command_position() {
+  printf '%s' "$1" | grep -Eq "${CMD_POS_PREFIX}${WATCH_SCRIPT_WORD}"
+}
+
+is_relevant() {
+  local cmd=$1
+  printf '%s' "$cmd" | tr -d "'\"\\\\" | grep -q 'fm-watch' || return 1
+  watch_script_in_command_position "$(quote_walk strip "$cmd")" && return 0
+  watch_script_in_command_position "$(quote_walk neutral "$cmd")" && return 0
+  if has_nested_shell_evaluator "$cmd"; then
+    watch_script_in_command_position "$(quote_walk segments "$cmd")" && return 0
+  fi
+  return 1
+}
+
+# pkill must itself sit in command position (judged on the quote-stripped
+# text), while the fm-watch target may come from a quoted argument - so
+# `pkill -f 'fm-watch'` still denies but a grep whose pattern quotes the same
+# words does not.
 is_pkill_watch() {
-  printf '%s' "$1" | grep -Eq '\bpkill\b[^|;&]*fm-watch'
+  local cmd=$1 segs
+  printf '%s' "$cmd" | tr -d "'\"\\\\" | grep -q 'pkill' || return 1
+  if printf '%s' "$(quote_walk strip "$cmd")" | grep -Eq "${CMD_POS_PREFIX}${PKILL_WORD}"; then
+    printf '%s' "$cmd" | grep -Eq '\bpkill\b[^|;&]*fm-watch' && return 0
+  fi
+  if has_nested_shell_evaluator "$cmd"; then
+    segs=$(quote_walk segments "$cmd")
+    if printf '%s' "$segs" | grep -Eq "${CMD_POS_PREFIX}${PKILL_WORD}"; then
+      printf '%s' "$segs" | grep -Eq '\bpkill\b[^|;&]*fm-watch' && return 0
+    fi
+  fi
+  return 1
 }
 
 # Bare shell `&` (not `&&` or redirection), or nohup/disown anywhere in an
 # already-relevant command.
 has_bare_background_operator() {
   local cmd=$1
+  local LC_ALL=C
   local i len ch prev next in_single=0 in_double=0 escaped=0
   len=${#cmd}
   for ((i = 0; i < len; i++)); do
@@ -197,11 +348,16 @@ has_bare_background_operator() {
   return 1
 }
 
+# The evaluator itself must sit in command position on the quote-stripped
+# text - a bare 'eval' or 'bash -c' appearing as an argument word (a grep
+# pattern, a git pathspec) must not turn every quoted segment into a command
+# payload.
 has_nested_shell_evaluator() {
-  local cmd=$1
-  printf '%s' "$cmd" | grep -Eq \
-    -e '(^|[[:space:];|&])([^[:space:];|&]*/)?(bash|sh|zsh)([[:space:]][^;|&]*)?[[:space:]]-[^[:space:]]*c([[:space:]]|$)' \
-    -e '(^|[[:space:];|&])eval([[:space:]]|$)'
+  local stripped
+  stripped=$(quote_walk strip "$1")
+  printf '%s' "$stripped" | grep -Eq \
+    -e "${CMD_POS_PREFIX}([^[:space:];|&]*/)?(bash|sh|zsh)([[:space:]][^;|&]*)?[[:space:]]-[^[:space:]]*c([[:space:]]|\$)" \
+    -e "${CMD_POS_PREFIX}eval([[:space:]]|\$)"
 }
 
 nested_shell_projection() {
@@ -224,6 +380,7 @@ has_shell_list_operator() {
 
 has_command_or_process_substitution() {
   local cmd=$1
+  local LC_ALL=C
   local i len ch next in_single=0 in_double=0 escaped=0
   len=${#cmd}
   for ((i = 0; i < len; i++)); do
@@ -257,6 +414,7 @@ has_command_or_process_substitution() {
 
 has_shell_redirection() {
   local cmd=$1
+  local LC_ALL=C
   local i len ch in_single=0 in_double=0 escaped=0
   len=${#cmd}
   for ((i = 0; i < len; i++)); do
@@ -325,7 +483,14 @@ statement_count() {
 # The blessed shape: optional cd/export/guarded-x-mode-source leading
 # statements, then a sole final exec of fm-watch-arm.sh (optional --restart)
 # or a sole fm-watch-checkpoint.sh invocation. No pipes, background operator,
-# redirection, or command/process substitution anywhere.
+# redirection, or command/process substitution anywhere. Both the relative
+# (bin/, ./bin/) and absolute (/.../bin/) invocations are blessed, and the
+# x-mode source clause accepts the repo-relative path or the rendered
+# absolute path (optionally single-quoted, as bin/fm-supervision-instructions.sh
+# emits it).
+BLESSED_PATH_PREFIX='((\./)?|/[^[:space:]]*/)'
+X_MODE_ENV_RE="(config/x-mode\\.env|/[^[:space:]']*/config/x-mode\\.env|'/[^']*/config/x-mode\\.env')"
+
 is_blessed_shape() {
   local cmd=$1
   printf '%s' "$cmd" | grep -Eq '\|' && return 1
@@ -349,20 +514,20 @@ EOF
   local last=${stmts[$((n - 1))]}
   has_shell_list_operator "$last" && return 1
   local last_ok=1
-  printf '%s' "$last" | grep -Eq '^(exec[[:space:]]+)?(\./)?bin/fm-watch-arm\.sh([[:space:]]+--restart)?[[:space:]]*$' && last_ok=0
+  printf '%s' "$last" | grep -Eq "^(exec[[:space:]]+)?${BLESSED_PATH_PREFIX}bin/fm-watch-arm\\.sh([[:space:]]+--restart)?[[:space:]]*\$" && last_ok=0
   if [ "$last_ok" -ne 0 ]; then
-    printf '%s' "$last" | grep -Eq '^(\./)?bin/fm-watch-checkpoint\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]*$' && last_ok=0
+    printf '%s' "$last" | grep -Eq "^${BLESSED_PATH_PREFIX}bin/fm-watch-checkpoint\\.sh([[:space:]]+[^[:space:]]+)*[[:space:]]*\$" && last_ok=0
   fi
   [ "$last_ok" -eq 0 ] || return 1
 
   local i stmt
   for ((i = 0; i < n - 1; i++)); do
     stmt=${stmts[$i]}
-    printf '%s' "$stmt" | grep -Eq '^\[[[:space:]]+-f[[:space:]]+config/x-mode\.env[[:space:]]+\][[:space:]]+&&[[:space:]]+(\.|source)[[:space:]]+config/x-mode\.env$' && continue
+    printf '%s' "$stmt" | grep -Eq "^\\[[[:space:]]+-f[[:space:]]+${X_MODE_ENV_RE}[[:space:]]+\\][[:space:]]+&&[[:space:]]+(\\.|source)[[:space:]]+${X_MODE_ENV_RE}\$" && continue
     has_shell_list_operator "$stmt" && return 1
     printf '%s' "$stmt" | grep -Eq '^cd[[:space:]]+[^[:space:]]+$' && continue
     printf '%s' "$stmt" | grep -Eq '^export[[:space:]]+[A-Za-z_][A-Za-z0-9_]*=.*$' && continue
-    printf '%s' "$stmt" | grep -Eq '^(\.|source)[[:space:]]+config/x-mode\.env$' && continue
+    printf '%s' "$stmt" | grep -Eq "^(\\.|source)[[:space:]]+${X_MODE_ENV_RE}\$" && continue
     return 1
   done
   return 0
@@ -374,6 +539,15 @@ json_escape() {
 }
 
 # --- decision -----------------------------------------------------------------
+
+# Raw-substring pre-filter: every deny needs an fm-watch token in some
+# projection (pkill denies also require an fm-watch target), and the
+# projections only drop quote delimiters, backslashes, and quoted content -
+# so no deny can fire unless 'fm-watch' or 'pkill' appears in the
+# delimiter-free raw text. This hook runs on every shell call; the filter
+# keeps the per-character projection walkers off that hot path. Any new deny
+# token must extend this anchor set.
+printf '%s' "$CMD" | tr -d "'\"\\\\" | grep -Eq 'fm-watch|pkill' || exit 0
 
 DENY=0
 REASON=""
@@ -409,6 +583,11 @@ elif is_relevant "$CMD"; then
 fi
 
 if [ "$DENY" -eq 1 ]; then
+  # Lazy scope gate: only a would-be deny pays the git calls, and only the
+  # primary checkout actually denies - crewmate/scout worktrees and secondmate
+  # homes inherit the tracked hook files but are not the supervision loop this
+  # seatbelt protects.
+  is_primary_checkout || exit 0
   ESCAPED=$(json_escape "$REASON")
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"},"systemMessage":"%s"}\n' "$ESCAPED" >&2
   # Claude Code only honors the stderr deny when stdout is empty; see the
