@@ -9,8 +9,9 @@
 #            skill; codex is pointed at crew/review/diff-review.md and its
 #            prompt carries the mandatory "Use subagents" wording.
 #            The crew procedure owns the at-most-once-per-PR rule for this tier.
-#   simple   plain review prompts, no skill, no subagents; also used for every
-#            follow-up round after fixes.
+#   simple   plain review prompts, no skill, no subagents.
+#            Follow-up rounds after fixes reuse the review-only pipeline pass
+#            (crew/review/review-procedure.md), not another launch of this script.
 #   --print  print the two launch commands (shell-quoted) instead of running.
 #   --out-dir <dir>  capture directory for reviewer output (default ./tmp/fm-review).
 # Run it from the project worktree root. It launches both reviewers as parallel
