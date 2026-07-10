@@ -132,6 +132,25 @@ assert_deny "absolute-path arm backgrounded" '/home/fm/ht/firstmate/bin/fm-watch
 assert_deny "absolute-path arm bundled with &&" 'cd /tmp && exec /home/fm/ht/firstmate/bin/fm-watch-arm.sh'
 assert_deny "absolute-path checkpoint redirected" '/home/fm/ht/firstmate/bin/fm-watch-checkpoint.sh --seconds 180 >/tmp/out'
 
+# --- pre-filter fast path -----------------------------------------------------
+#
+# The hook fires on every shell call, so a large command that never mentions
+# fm-watch or pkill must short-circuit before the per-character projection
+# walkers (observed stall, 2026-07-10: ~104s on a 50KB command without the
+# raw-substring pre-filter).
+
+test_large_irrelevant_command_is_fast_allow() {
+  local big rc start elapsed
+  big=$(head -c 50000 /dev/zero | tr '\0' 'x')
+  start=$SECONDS
+  "$CHECK" --command "echo $big" >/dev/null 2>&1
+  rc=$?
+  elapsed=$((SECONDS - start))
+  [ "$rc" -eq 0 ] || fail "a large irrelevant command must be allowed, got exit $rc"
+  [ "$elapsed" -le 5 ] || fail "a large irrelevant command must short-circuit before the projection walkers, took ${elapsed}s"
+  pass "pre-filter: 50KB irrelevant command is a fast allow (${elapsed}s)"
+}
+
 # --- CLI parsing -------------------------------------------------------------
 
 test_command_equals_form() {
@@ -412,6 +431,7 @@ test_shellcheck_clean() {
   pass "bin/fm-arm-pretool-check.sh is shellcheck-clean"
 }
 
+test_large_irrelevant_command_is_fast_allow
 test_command_equals_form
 test_background_flag_accepted_and_non_gating
 test_unknown_flag_errors

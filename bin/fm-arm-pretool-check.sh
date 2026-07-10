@@ -49,7 +49,10 @@
 # on 2026-07-10 the previous anywhere-in-text match false-denied read-only
 # grep/git commands whose search patterns named fm-watch*, and a
 # `no-mistakes axi respond --instructions "..."` whose prose named the
-# scripts.
+# scripts. A raw-substring pre-filter (fm-watch or pkill anywhere in the
+# quote-delimiter-free text) short-circuits every other command before any
+# projection work, so the per-character walkers never run on the ordinary
+# large commands this hook sees on every shell call.
 #
 # Usage:
 #   <PreToolUse JSON on stdin> | bin/fm-arm-pretool-check.sh
@@ -218,6 +221,7 @@ PKILL_WORD='[^[:space:];|&]*pkill\b'
 #              newline cannot fabricate a command-position anchor.
 quote_walk() {
   local mode=$1 cmd=$2
+  local LC_ALL=C
   local i len ch out="" seg="" in_single=0 in_double=0 escaped=0
   len=${#cmd}
   for ((i = 0; i < len; i++)); do
@@ -289,6 +293,7 @@ watch_script_in_command_position() {
 
 is_relevant() {
   local cmd=$1
+  printf '%s' "$cmd" | tr -d "'\"\\\\" | grep -q 'fm-watch' || return 1
   watch_script_in_command_position "$(quote_walk strip "$cmd")" && return 0
   watch_script_in_command_position "$(quote_walk neutral "$cmd")" && return 0
   if has_nested_shell_evaluator "$cmd"; then
@@ -303,6 +308,7 @@ is_relevant() {
 # words does not.
 is_pkill_watch() {
   local cmd=$1 segs
+  printf '%s' "$cmd" | tr -d "'\"\\\\" | grep -q 'pkill' || return 1
   if printf '%s' "$(quote_walk strip "$cmd")" | grep -Eq "${CMD_POS_PREFIX}${PKILL_WORD}"; then
     printf '%s' "$cmd" | grep -Eq '\bpkill\b[^|;&]*fm-watch' && return 0
   fi
@@ -319,6 +325,7 @@ is_pkill_watch() {
 # already-relevant command.
 has_bare_background_operator() {
   local cmd=$1
+  local LC_ALL=C
   local i len ch prev next in_single=0 in_double=0 escaped=0
   len=${#cmd}
   for ((i = 0; i < len; i++)); do
@@ -388,6 +395,7 @@ has_shell_list_operator() {
 
 has_command_or_process_substitution() {
   local cmd=$1
+  local LC_ALL=C
   local i len ch next in_single=0 in_double=0 escaped=0
   len=${#cmd}
   for ((i = 0; i < len; i++)); do
@@ -421,6 +429,7 @@ has_command_or_process_substitution() {
 
 has_shell_redirection() {
   local cmd=$1
+  local LC_ALL=C
   local i len ch in_single=0 in_double=0 escaped=0
   len=${#cmd}
   for ((i = 0; i < len; i++)); do
@@ -545,6 +554,15 @@ json_escape() {
 }
 
 # --- decision -----------------------------------------------------------------
+
+# Raw-substring pre-filter: every deny needs an fm-watch token in some
+# projection (pkill denies also require an fm-watch target), and the
+# projections only drop quote delimiters, backslashes, and quoted content -
+# so no deny can fire unless 'fm-watch' or 'pkill' appears in the
+# delimiter-free raw text. This hook runs on every shell call; the filter
+# keeps the per-character projection walkers off that hot path. Any new deny
+# token must extend this anchor set.
+printf '%s' "$CMD" | tr -d "'\"\\\\" | grep -Eq 'fm-watch|pkill' || exit 0
 
 DENY=0
 REASON=""
