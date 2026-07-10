@@ -1,22 +1,63 @@
-PR description has two important sections: Motivation/Context and Changes. For Changes, do not regurgitate the PR diff. You should make sure to deeply understand the PR and then break it down structural into major changes. Each major change should mention the key decisions or points of interest that the reviewer would be interested in. The PR description is a high-level introduction to a PR for a reviewer. Minimize direct code references as no one is going to have the diff open side-by-side with the PR description. The PR description should be as concise as possible.
+PR description has two important sections: Motivation/Context and Changes.
+For Changes, do not regurgitate the PR diff.
+You should make sure to deeply understand the PR and then break it down structurally into major changes.
+Each major change should mention the key decisions or points of interest that the reviewer would be interested in.
+The PR description is a high-level introduction to a PR for a reviewer.
+Minimize direct code references as no one is going to have the diff open side-by-side with the PR description.
+The PR description should be as concise as possible.
 
 For PRs with visual changes, take screenshots whenever the output is renderable: run the app, render the component, or generate the artifact - whatever the change makes visible.
 Save the screenshots locally under the task's data directory at `FM/data/<task-id>/screenshots/`, never inside the project worktree, and report that path in the done report so firstmate can point the captain at them; this local copy is the primary durable record.
-Additionally, upload each screenshot to GitHub so PR readers can see it, using a per-PR draft release as the asset host:
+Additionally, upload each screenshot to the PR base repository so its collaborators can see it, using a per-PR draft release as the asset host:
 
 ```sh
-PR_NUM=<pr-number>
-UPLOAD_URL=$(gh api repos/<owner>/<repo>/releases -X POST \
-  -f tag_name="evidence-${PR_NUM}" \
-  -f name="PR #${PR_NUM} Evidence" \
-  -F draft=true --jq '.upload_url' | sed 's/{.*//')
-ASSET_URL=$(curl -s -X POST "${UPLOAD_URL}?name=<file>.png" \
-  -H "Authorization: token $(gh auth token)" \
+set -eu
+PR_NUM="<pr-number>"
+REPO="<pr-base-owner>/<pr-base-repo>"
+FILE_PATH="<local-path>.png"
+FILE_NAME="<file>.png"
+TAG="evidence-${PR_NUM}"
+
+if ! UPLOAD_URLS=$(gh api --paginate "repos/${REPO}/releases?per_page=100" \
+  --jq ".[] | select(.draft == true and .tag_name == \"${TAG}\") | .upload_url"); then
+  exit 1
+fi
+UPLOAD_URL=$(printf '%s\n' "$UPLOAD_URLS" | sed -n '1p')
+if [ -z "$UPLOAD_URL" ]; then
+  if ! UPLOAD_URL=$(gh api "repos/${REPO}/releases" -X POST \
+    -f tag_name="$TAG" \
+    -f name="PR #${PR_NUM} Evidence" \
+    -F draft=true \
+    --jq '.upload_url | select(type == "string" and length > 0)'); then
+    exit 1
+  fi
+fi
+UPLOAD_URL=${UPLOAD_URL%%\{*}
+[ -n "$UPLOAD_URL" ] && [ "$UPLOAD_URL" != null ] || exit 1
+
+AUTH_TOKEN=$(gh auth token)
+[ -n "$AUTH_TOKEN" ] || exit 1
+if ! UPLOAD_RESPONSE=$(curl -sS --fail -X POST \
+  "${UPLOAD_URL}?name=${FILE_NAME}" \
+  --config - \
   -H "Content-Type: image/png" \
-  --data-binary "@<local-path>.png" | jq -r '.browser_download_url')
+  --data-binary "@${FILE_PATH}" <<EOF
+header = "Authorization: token ${AUTH_TOKEN}"
+EOF
+); then
+  unset AUTH_TOKEN
+  exit 1
+fi
+unset AUTH_TOKEN
+ASSET_URL=$(printf '%s\n' "$UPLOAD_RESPONSE" | \
+  jq -er 'select(.state == "uploaded") | .browser_download_url | select(type == "string" and length > 0)')
+[ -n "$ASSET_URL" ] && [ "$ASSET_URL" != null ] || exit 1
 ```
 
-Create one draft release per PR and reuse it for every additional upload to the same PR.
+This upload applies only when the author has push access to the PR base repository, and the asset links are for that repository's collaborators viewing them in authenticated browser sessions.
+For fork-based upstream contributions without base-repository push access, skip the upload and rely on the local `FM/data/<task-id>/screenshots/` copy.
+The snippet finds or creates one draft release per PR and reuses it for every additional upload to the same PR.
+Draft releases have no tag ref and are not addressable by tag through `gh release`, so this procedure deliberately uses raw `gh api` plus `curl`.
 The release must stay a draft forever: deleting it kills the asset URLs, while a lingering draft is cheap because drafts are invisible to non-collaborators and create no tag.
 Verify an upload from the upload response JSON, never by fetching the asset URL afterward: draft asset URLs are served only to repo collaborators' browser sessions, so anonymous and API-token requests get 404 and a curl 404 does not mean the upload failed.
 In the PR description, embed each image inline (`![<label>](<asset-url>)`) and put the plain labeled link directly beneath it, so the link still works if the inline embed renders broken for viewers; if first real use shows inline embeds broken, trim this guidance to links-only.
