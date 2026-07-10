@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Launch the post-implementation dual reviewers (claude + codex) for a PR.
+# Own the verified claude + codex command surface for post-implementation reviews.
 # This script is the one owner of the pilot-verified reviewer launch commands
-# and per-tier prompts; crew/review/review-procedure.md tells the crewmate when
-# to run it, and .agents/skills/pr-review-dispatch tells firstmate how to pick
-# the tier.
+# and per-tier prompts; crew/review/review-procedure.md tells the crewmate which
+# printed command to run, and .agents/skills/pr-review-dispatch tells firstmate
+# how to pick the tier.
 # Usage: fm-review-launch.sh <full|simple> <pr-number> [--print] [--out-dir <dir>]
 #   full     skill-based expensive review: claude uses its built-in code-review
 #            skill; codex is pointed at crew/review/diff-review.md and its
@@ -12,10 +12,11 @@
 #   simple   plain review prompts, no skill, no subagents; also one of the
 #            follow-up re-review paths after fixes, alongside a pipeline
 #            re-review (crew/review/review-procedure.md owns the sequencing).
-#   --print  print the two launch commands (shell-quoted) instead of running.
+#   --print  print both launch commands (shell-quoted) instead of running; the
+#            tracked procedure uses only the printed claude command for reviewer 2.
 #   --out-dir <dir>  capture directory for reviewer output (default ./tmp/fm-review).
-# Run it from the project worktree root. It launches both reviewers as parallel
-# subprocesses, captures each reviewer's stdout VERBATIM to
+# Run it from the project worktree root. Without --print, it launches both
+# reviewers as parallel subprocesses and captures each reviewer's stdout VERBATIM to
 # <out-dir>/{claude,codex}-review-<n>.md (stderr to a sibling .log, <n> increments
 # per round so earlier rounds are never clobbered), waits for both, prints the
 # capture paths with per-reviewer exit codes, and exits non-zero if either failed.

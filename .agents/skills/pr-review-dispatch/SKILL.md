@@ -50,7 +50,8 @@ The flag is verified for direct-PR projects only; the scaffold refuses other mod
 
 ## Config indirection (config/review.env)
 
-Reviewer models, efforts, launch flags, and per-repo guideline links are LOCAL, gitignored values in `config/review.env`, read by `bin/fm-review-launch.sh` with the pilot-verified values as defaults (key reference in the script header; template in `docs/examples/review.env`).
+Reviewer 2's model, effort, launch flags, and per-repo guideline links are LOCAL, gitignored values in `config/review.env`, read by `bin/fm-review-launch.sh` with the pilot-verified values as defaults (key reference in the script header; template in `docs/examples/review.env`).
+The file's retained codex-command settings do not select or configure pipeline reviewer 1; `docs/configuration.md` owns that distinction.
 An absent file means the verified defaults apply, so a fresh home works without setup.
 `config/review.env` is per-home and not in the inheritable config set today; a secondmate home without its own copy uses the defaults.
 
