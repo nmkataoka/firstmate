@@ -247,10 +247,11 @@ case "$MODE" in
     if [ -n "$REVIEW_TIER" ]; then
     DOD=$(cat <<EOF
 # Definition of done
-This project ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+This project ships **direct-PR**: you raise the PR yourself; the full no-mistakes pipeline does not gate it.
 The task is complete only when committed on your branch and the post-implementation review below is resolved.
 When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then run the review procedure below before reporting done.
-Do NOT run /no-mistakes. The captain reviews and merges the PR; firstmate relays it.
+Do NOT run /no-mistakes; the only sanctioned no-mistakes use in this task is the review-only pipeline run the procedure itself specifies.
+The captain reviews and merges the PR; firstmate relays it.
 
 # Post-implementation review
 Firstmate has set the review tier for this task: TIER=\`$REVIEW_TIER\`.

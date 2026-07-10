@@ -96,6 +96,8 @@ test_review_flag_direct_pr() {
   assert_grep "FM=\`$ROOT\`" "$brief" "review brief does not state the FM root for the procedure"
   assert_grep "one-line note of any rejected findings" "$brief" \
     "review brief lost the review-shaped done report"
+  assert_grep "review-only pipeline run the procedure itself specifies" "$brief" \
+    "review brief must sanction the procedure's review-only no-mistakes run"
   assert_no_grep "EOF" "$brief" "review brief leaked a heredoc EOF marker"
 
   id="brief-review-c2"

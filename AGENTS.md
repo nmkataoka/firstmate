@@ -430,7 +430,8 @@ It sweeps the current session for uncaptured durable knowledge, routes findings 
 **Delivery mode (choose at add).** `<mode>` is how a finished change reaches `main`, picked per project when you add it and recorded in the registry line (`fm-project-mode.sh` parses it; `fm-spawn` records it into each task's meta):
 
 - `no-mistakes` (default; `[...]` may be omitted) - full pipeline -> PR -> captain merge. Highest assurance.
-- `direct-PR` - push + open a PR via `gh-axi`, no pipeline -> captain merge.
+- `direct-PR` - push + open a PR via `gh-axi`, no full delivery pipeline -> captain merge.
+  Selected tasks may run the review-only pipeline flow in `crew/review/review-procedure.md`.
 - `local-only` - local branch, no remote, no PR; firstmate reviews the diff, the captain approves, firstmate merges to local `main` (section 7).
 
 Orthogonal to mode is an optional `+yolo` flag (`[direct-PR +yolo]`), default off and **not recommended**: with `yolo` on, firstmate makes the approval decisions itself instead of asking the captain (section 7). When the captain adds a project without saying, default to `no-mistakes` with yolo off; only set a faster mode or `+yolo` on the captain's explicit say-so.
@@ -442,7 +443,7 @@ Creating a GitHub repo is outward-facing, so get the captain's consent before to
 Then clone it into `projects/<name>` and initialize only if the mode is `no-mistakes`.
 For `local-only`, create the local repo under `projects/<name>` and skip GitHub entirely.
 
-**Initialize (`no-mistakes` mode only):**
+**Initialize (`no-mistakes` mode by default):**
 
 ```sh
 cd projects/<name> && no-mistakes init && no-mistakes doctor
@@ -452,7 +453,8 @@ cd projects/<name> && no-mistakes init && no-mistakes doctor
 It does **not** vendor any skill into the project - the no-mistakes skill is user-level now, available to every crewmate without a per-project copy.
 So init produces nothing to commit; it is a sanctioned exception to the never-write rule (section 1) only in that it runs git remote/config setup inside the project.
 Touch nothing else.
-`direct-PR` and `local-only` projects skip init entirely - they do not run the pipeline (`local-only` has no remote at all).
+By default, `direct-PR` and `local-only` projects skip init entirely - they do not run the pipeline (`local-only` has no remote at all).
+The exception is a `direct-PR` project on the review-only pipeline flow (`crew/review/review-procedure.md`), whose review step runs through the gate: initialize its clone before the first review-step run.
 
 If `no-mistakes doctor` reports problems, fix the environment (auth, daemon) before dispatching work to that project.
 
@@ -565,7 +567,11 @@ A secondmate-reported merged PR is exactly the case the fleet-sync-on-merge wake
 A ship task's path from `done` to landed on `main` is set by the project's `mode` (recorded in meta; section 6); `yolo` decides who approves. The Validate / PR ready / Ship teardown stages below are written for the `no-mistakes` path; the other modes diverge:
 
 - **no-mistakes** - the stages below as written: no-mistakes validation pipeline -> PR -> captain merge.
-- **direct-PR** - no pipeline. The crewmate pushes and opens the PR itself (its brief says so) and reports `done: PR <url>`. Skip the Validate step and go straight to PR ready (run `fm-pr-check`, relay the PR). Teardown uses the normal landed-work check.
+- **direct-PR** - no full delivery pipeline.
+  The crewmate pushes and opens the PR itself (its brief says so) and reports `done: PR <url>`.
+  A task brief carrying the optional post-implementation review instead runs only the review-only pipeline stage specified by `crew/review/review-procedure.md`.
+  Skip the Validate step and go straight to PR ready (run `fm-pr-check`, relay the PR).
+  Teardown uses the normal landed-work check.
 - **local-only** - no remote, no PR. The crewmate stops at `done: ready in branch <task branch>`. Review the diff with `bin/fm-review-diff.sh <id>`, relay a one-paragraph summary to the captain, and on approval run `bin/fm-merge-local.sh <id>` to fast-forward local `main` (it refuses anything but a clean fast-forward - if it does, have the crewmate rebase). No `fm-pr-check`. Then teardown, whose safety check requires the branch already merged into local `main`, OR the work pushed to any remote (a fork counts - relevant for upstream-contribution PRs on a local-only-registered project).
 
 When reviewing any crewmate branch diff, use `bin/fm-review-diff.sh <id>` rather than `git diff <default>...branch` directly.
