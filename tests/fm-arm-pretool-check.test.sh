@@ -12,6 +12,16 @@ set -u
 
 CHECK="$ROOT/bin/fm-arm-pretool-check.sh"
 
+# Denies fire only from firstmate's PRIMARY checkout (fm-turnend-guard.sh's
+# predicate; the 2026-07-10 false-deny fix). Point FM_ROOT_OVERRIDE at a
+# primary-shaped fixture so the allow/deny table exercises the full predicate
+# whether this suite runs in a CI clone, a crewmate worktree, or the primary.
+SCOPE_DIR=$(fm_test_tmproot fm-arm-pretool-scope)
+fm_git_init_commit "$SCOPE_DIR/primary"
+printf '# fixture\n' > "$SCOPE_DIR/primary/AGENTS.md"
+mkdir -p "$SCOPE_DIR/primary/bin"
+export FM_ROOT_OVERRIDE="$SCOPE_DIR/primary"
+
 # --- CLI mode: table-driven allow/deny -------------------------------------
 
 assert_allow() {
@@ -78,6 +88,33 @@ assert_allow "export then exec arm, blessed leading statement" 'export FM_HOME=/
 assert_deny "cd && exec arm is bundling, not the blessed ';' shape" 'cd /home/fm && exec bin/fm-watch-arm.sh'
 assert_allow "totally unrelated command" 'git status'
 assert_allow "empty command" ''
+
+# Positional-relevance regressions (observed false-denies, 2026-07-10): a
+# watcher-script name in a search pattern, quoted prose, or any other
+# argument position must not make the command relevant.
+assert_allow "quoted grep pattern naming the arm script" "grep -rn 'fm-watch-arm' bin/"
+assert_allow "unquoted grep argument naming the arm script" 'git grep -l fm-watch-arm.sh -- bin'
+assert_allow "git log --grep naming the watcher script" 'git log --oneline --grep fm-watch.sh'
+assert_allow "quoted prose naming the scripts in an argument" 'no-mistakes axi respond --action fix --instructions "reword the doc: never launch bin/fm-watch-arm.sh or bin/fm-watch.sh with a shell &"'
+assert_allow "unquoted prose mention after echo" 'echo bin/fm-watch-arm.sh is armed by the harness'
+assert_allow "quoted pkill prose in a search pattern" "grep -n 'pkill -f fm-watch' AGENTS.md"
+assert_allow "unquoted pkill mention as a grep argument" 'grep -c pkill.*fm-watch docs/arm-pretool-check.md'
+assert_allow "nested shell payload that only greps for the name" "bash -lc 'grep fm-watch-arm.sh docs/*.md'"
+# ...while the same names in command position stay relevant and denied.
+assert_deny "arm in command position after a pipe" 'echo go | bin/fm-watch-arm.sh &'
+assert_deny "quoted pkill target is still a broad pkill" "pkill -f 'fm-watch'"
+assert_deny "nested shell payload with a quoted pkill" "bash -lc 'pkill -f fm-watch'"
+
+# Absolute-path forms (upstream-documented gap, closed): the rendered recipes
+# substitute absolute paths; the blessing and the denies must cover both.
+assert_allow "absolute-path arm standalone" 'exec /home/fm/ht/firstmate/bin/fm-watch-arm.sh'
+assert_allow "absolute-path arm with --restart" '/home/fm/ht/firstmate/bin/fm-watch-arm.sh --restart'
+assert_allow "absolute-path checkpoint standalone" '/home/fm/ht/firstmate/bin/fm-watch-checkpoint.sh --seconds 180'
+assert_allow "rendered absolute quoted x-mode source then exec arm" "[ -f '/home/fm/ht/firstmate/config/x-mode.env' ] && . '/home/fm/ht/firstmate/config/x-mode.env'; exec bin/fm-watch-arm.sh"
+assert_allow "absolute unquoted x-mode source then exec arm" '[ -f /home/fm/config/x-mode.env ] && . /home/fm/config/x-mode.env; exec bin/fm-watch-arm.sh'
+assert_deny "absolute-path arm backgrounded" '/home/fm/ht/firstmate/bin/fm-watch-arm.sh &'
+assert_deny "absolute-path arm bundled with &&" 'cd /tmp && exec /home/fm/ht/firstmate/bin/fm-watch-arm.sh'
+assert_deny "absolute-path checkpoint redirected" '/home/fm/ht/firstmate/bin/fm-watch-checkpoint.sh --seconds 180 >/tmp/out'
 
 # --- CLI parsing -------------------------------------------------------------
 
@@ -288,6 +325,69 @@ test_pi_extension_carries_pretool_check() {
   pass ".pi primary extension: tool_call handler invokes the shared checker and can block"
 }
 
+# --- primary-checkout scoping -------------------------------------------------
+#
+# Crewmate/scout worktrees and secondmate homes inherit the tracked hook files,
+# but the seatbelt protects the primary's supervision loop, not workers: outside
+# the primary every command - even a genuine deny shape - is a silent allow.
+
+assert_scope_silent_allow() {
+  local desc=$1 home=$2 out rc
+  out=$(FM_ROOT_OVERRIDE="$home" "$CHECK" --command 'bin/fm-watch-arm.sh &' 2>&1)
+  rc=$?
+  [ "$rc" -eq 0 ] || fail "a deny shape must be allowed outside the primary ($desc), got exit $rc: $out"
+  [ -z "$out" ] || fail "the out-of-primary allow must be silent ($desc), got: $out"
+  pass "scope: $desc is a silent allow even for a deny shape"
+}
+
+test_scope_linked_worktree_silent_allow() {
+  local dir
+  dir=$(fm_test_tmproot fm-arm-pretool-worktree)
+  fm_git_worktree "$dir/repo" "$dir/wt" fm-arm-scope-test
+  printf '# fixture\n' > "$dir/wt/AGENTS.md"
+  mkdir -p "$dir/wt/bin"
+  assert_scope_silent_allow "a linked crewmate worktree" "$dir/wt"
+}
+
+test_scope_secondmate_home_silent_allow() {
+  local dir
+  dir=$(fm_test_tmproot fm-arm-pretool-secondmate)
+  fm_git_init_commit "$dir/home"
+  printf '# fixture\n' > "$dir/home/AGENTS.md"
+  mkdir -p "$dir/home/bin"
+  : > "$dir/home/.fm-secondmate-home"
+  assert_scope_silent_allow "a marker-bearing secondmate home" "$dir/home"
+}
+
+test_scope_non_repo_silent_allow() {
+  local dir
+  dir=$(fm_test_tmproot fm-arm-pretool-norepo)
+  mkdir -p "$dir/bin"
+  printf '# fixture\n' > "$dir/AGENTS.md"
+  assert_scope_silent_allow "a firstmate-shaped dir outside any git repo" "$dir"
+}
+
+test_scope_applies_to_stdin_mode_too() {
+  local dir rc
+  dir=$(fm_test_tmproot fm-arm-pretool-stdin-scope)
+  fm_git_worktree "$dir/repo" "$dir/wt" fm-arm-stdin-scope-test
+  printf '# fixture\n' > "$dir/wt/AGENTS.md"
+  mkdir -p "$dir/wt/bin"
+  printf '%s' '{"tool_input":{"command":"bin/fm-watch-arm.sh &"},"tool_name":"Bash"}' \
+    | FM_ROOT_OVERRIDE="$dir/wt" "$CHECK" >/dev/null 2>&1
+  rc=$?
+  [ "$rc" -eq 0 ] || fail "stdin mode must scope to the primary the same way as CLI mode, got exit $rc"
+  pass "scope: stdin JSON mode is also a silent allow outside the primary"
+}
+
+test_scope_primary_still_denies() {
+  local rc
+  FM_ROOT_OVERRIDE="$SCOPE_DIR/primary" "$CHECK" --command 'bin/fm-watch-arm.sh &' >/dev/null 2>&1
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "the primary-shaped fixture must still deny the deny shapes, got exit $rc"
+  pass "scope: the primary checkout keeps the full deny behavior"
+}
+
 # --- shellcheck (belt-and-suspenders; CI/CONTRIBUTING.md also runs this) -----
 
 test_shellcheck_clean() {
@@ -315,4 +415,9 @@ test_claude_settings_pretool_hook_wired
 test_codex_hooks_pretool_wired
 test_opencode_pretool_plugin_wired
 test_pi_extension_carries_pretool_check
+test_scope_linked_worktree_silent_allow
+test_scope_secondmate_home_silent_allow
+test_scope_non_repo_silent_allow
+test_scope_applies_to_stdin_mode_too
+test_scope_primary_still_denies
 test_shellcheck_clean
