@@ -12,7 +12,7 @@ Follow this procedure exactly.
 Stage 1 below runs the no-mistakes pipeline, so the repo clone you are in needs the no-mistakes gate.
 Firstmate initializes its own project clone once, under its sanctioned project-initialization exception: `cd projects/<name> && no-mistakes init && no-mistakes doctor`.
 Your task worktree is a separate clone, so check it yourself before stage 1: run `no-mistakes doctor`, and if it reports the repo is not initialized here, run `no-mistakes init`.
-No config change is part of this flow: review auto-fix stays at the global default (`auto_fix.review: 0`), so every blocking or ask-user review finding parks at an approval gate for firstmate triage instead of being self-fixed.
+No config change or preflight is part of this flow: the operator's no-mistakes config is expected to keep review auto-fix off (`auto_fix.review: 0`), so every blocking or ask-user review finding parks at an approval gate for firstmate triage instead of being self-fixed.
 That parking is the intended standing mechanism, not a failure.
 If self-driving review fix rounds are ever wanted later, the verified opt-in is a committed per-repo `.no-mistakes.yaml` containing `auto_fix:` with `review: 3`; no-mistakes v1.31.2 honors it from the pushed branch content, so it takes effect from the first branch that carries it (verified 2026-07-10).
 
@@ -23,15 +23,15 @@ If self-driving review fix rounds are ever wanted later, the verified opt-in is 
 
 ## Stage 1 - pipeline review (reviewer 1 of 2, review-only no-mistakes run)
 
-Every PR gets two independent reviews on the initial round: this pipeline review, then the claude second review in stage 2.
-Never review your own diff in this session; this stage runs a fresh reviewer inside the no-mistakes pipeline, on the operator's globally configured no-mistakes agent (`agent:` in `~/.no-mistakes/config.yaml`; codex as of 2026-07-10).
+Every PR gets two independent reviews on the initial round: this pipeline review, then the independent second review in stage 2.
+Never review your own diff in this session; reviewer 1 is whichever fresh agent/model the operator's no-mistakes config selects for the pipeline review step.
 From the worktree root, on your task branch with everything committed, run:
 
     no-mistakes axi run --intent "<what the user set out to accomplish>" --skip rebase,test,document,lint,push,pr,ci
 
 That invocation runs the pipeline with only the review step active (verified on no-mistakes v1.31.2; `intent` stays listed as a step but completes instantly from the `--intent` flag).
 Drive the run per no-mistakes' own guidance: read every return, remember a long-running call is working rather than stalled, and loop until an `outcome:`.
-When the run parks at the review gate (`review: awaiting_approval`) with findings, do not triage them yourself: report `needs-decision:` with the findings relayed verbatim, per your brief, and stop until firstmate replies.
+When the run parks at the review gate (`review: awaiting_approval`) with findings, do not triage them yourself: create the worktree-local `tmp/fm-review/` directory, save the findings verbatim to `tmp/fm-review/pipeline-findings-<run-id>.md`, append one single-line `needs-decision: pipeline review findings at <absolute-path>` status pointing to that file, and stop until firstmate replies.
 Firstmate owns the triage for this gate.
 Feed its per-finding decisions back with `no-mistakes axi respond --action fix --findings <ids>` (or `--action approve` to accept the step as-is), and let the pipeline apply every fix - do not hand-edit or commit fixes while the run is active.
 Avoid `--yes`.
@@ -44,15 +44,17 @@ If the run applied fixes (the reported `head:` moved past your commit), bring th
     git merge --ff-only FETCH_HEAD
 
 The fast-forward is safe for this shape because the rebase step was skipped, so fixes are appended commits (verified 2026-07-10); if `--ff-only` refuses, stop and report `blocked:`.
+After stage 1 resolves and any fix commits are fast-forwarded onto your branch, push the branch to origin before stage 2 so the PR head matches your local HEAD.
 
 Known trigger quirk (observed 2026-07-10): if `axi run` fails with `no run started for "<branch>"` and the gate repo's `notify-push.log` shows `invalid gate path: .`, trigger the run manually - `git push no-mistakes <branch>` starts an unskipped run, abort it with `no-mistakes axi abort --run <id>`, then repeat the `axi run` invocation above; the rerun path applies the skip flags correctly.
 
-## Stage 2 - claude second reviewer (reviewer 2 of 2, after stage 1 resolves)
+## Stage 2 - independent second reviewer (reviewer 2 of 2, after stage 1 resolves)
 
 This second review is part of the standard initial round for every PR, not an optional extra.
-Launch one INDEPENDENT fresh-context claude reviewer whose only inputs are the PR/diff and the tier's prompt.
+Launch one INDEPENDENT fresh-context reviewer whose only inputs are the PR/diff and the tier's prompt.
+The operator owns configuring reviewer 2 so its harness/model pairing differs from whichever agent/model reviewer 1 uses; this procedure deliberately does not preflight either mutable config.
 Run `FM/bin/fm-review-launch.sh <tier> <pr-number> --print` from the worktree root to get the verified launch commands, then run ONLY the printed claude command, capturing its stdout verbatim to a file in your worktree tmp (do not summarize it before saving).
-Do not run the printed codex command as a review round - the pipeline review in stage 1 is the codex review.
+Do not run the printed codex command as another review round.
 Reviewer model, effort, launch flags, and the per-repo guideline links baked into the prompt come from the firstmate home's local `config/review.env` when present, with the verified defaults otherwise (format and defaults in the script header).
 If the launch fails because a flag does not exist, report it instead of guessing at replacements.
 
@@ -60,7 +62,7 @@ Tier `full` (expensive): the claude prompt has the reviewer use its built-in cod
 The full-tier workflow runs AT MOST ONCE per PR - never repeat it, regardless of outcome; the cap constrains this expensive workflow only, never the number of reviewers.
 Tier `simple`: a plain review prompt, no skill.
 
-Then triage the claude findings yourself.
+Then triage the second reviewer's findings yourself.
 Treat them as: "We have some review feedback on your changes. Please investigate and triage these. If you need help making decision, ask me."
 
 - Triage on the merits; apply what is relevant (no pipeline run is active now, so you make these fixes yourself).
