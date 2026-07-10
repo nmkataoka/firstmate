@@ -73,7 +73,7 @@ README.md            public overview and development notes
 .claude/skills       symlink to .agents/skills for claude compatibility
 skills/              standalone public installer-facing skills, committed; not loaded by firstmate
 bin/                 helper scripts, committed; read each script's header before first use
-crew/review/         crew-facing post-implementation dual-review procedure and prompt files, committed; ship briefs reference them by absolute path (pr-review-dispatch skill, section 13)
+crew/review/         crew-facing post-implementation dual-review procedure and prompt files plus PR-description/screenshot guidance, committed; ship briefs reference them by absolute path (pr-review-dispatch skill, section 13)
 .env                 optional X-mode pairing token; LOCAL, gitignored; presence-gates section 14
 config/crew-harness  crewmate harness override; LOCAL, gitignored; absent or "default" = same as firstmate. Inherited as the literal file: a concrete primary adapter value also controls a secondmate home's own crewmates (section 4)
 config/crew-dispatch.json  optional crewmate dispatch profiles; LOCAL, gitignored; firstmate-maintained but human-editable natural-language rules that choose a per-task harness/model/effort profile (section 4). Inherited by secondmate homes
@@ -92,6 +92,7 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   secondmates.md      secondmate routing table; firstmate-private, maintained by fm-home-seed.sh (section 6)
   <id>/brief.md      per-task crewmate brief, or per-secondmate charter brief when kind=secondmate
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
+  <id>/screenshots/  visual-PR screenshots saved locally by the crewmate per crew/review/pr-description-writing.md, never uploaded to GitHub; survives teardown
 projects/            cloned repos; gitignored; READ-ONLY for you
 state/               volatile runtime signals; gitignored
   <id>.status        appended by crewmates: "<state>: <note>" wake-event lines, not current-state truth
@@ -875,6 +876,7 @@ For a ship task the definition of done is shaped by the project's delivery mode 
 The no-mistakes brief points to no-mistakes' version-matched guidance and keeps only firstmate-specific wrapper rules for `ask-user` escalation, `--yes` avoidance, and the CI-green done line.
 The scaffold reads the mode via `fm-project-mode.sh`, so you do not pass it.
 Ship briefs also include the project-memory contract: run `bin/fm-ensure-agents-md.sh` when the project already has agent-memory files or when the task produced durable project-intrinsic knowledge, then record proportionate learnings in `AGENTS.md`.
+Ship briefs also sanction `data/<id>/screenshots/` as the only out-of-worktree write beyond the status file and, for PRs with visual changes, point the crewmate at `crew/review/pr-description-writing.md` for the local-screenshots-only rule (no GitHub uploads).
 For a direct-PR ship task that should carry the post-implementation dual review, add `--review=<full|simple>` after choosing the tier with `pr-review-dispatch` (section 13); the scaffold refuses the flag for scout, secondmate, and unverified-mode briefs.
 For scout tasks add `--scout`: the scaffold swaps the definition of done for the report contract (findings to `data/<id>/report.md`, no branch, no push, no PR) and declares the worktree scratch; scout is mode-agnostic.
 Scout briefs do not include the project-memory step, because their deliverable is a report rather than a committed project change.

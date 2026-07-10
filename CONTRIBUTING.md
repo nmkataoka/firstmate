@@ -36,7 +36,7 @@ See the [no-mistakes quick start](https://kunchenguid.github.io/no-mistakes/star
   `AGENTS.md` is the agent's main job description and names when to load bundled firstmate skills; `CLAUDE.md` is a symlink to it, and `.claude/skills` is a symlink to `.agents/skills`.
 - Only shared material is tracked: `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `.tasks.toml`, `.github/workflows/`, `bin/`, `.agents/skills/`, `crew/`, and `skills/`.
   `.agents/skills/` holds agent-loaded skills that assume a live firstmate home and carry `metadata.internal: true` so installers such as [skills.sh](https://skills.sh) hide them from discovery; `skills/` holds standalone, installer-facing public skills with no firstmate dependency (see the README's "Two-tier skill layout").
-  `crew/` holds tracked crew-facing procedure and prompt files (today the post-implementation dual-review workflow under `crew/review/`) that generated briefs reference by absolute path.
+  `crew/` holds tracked crew-facing procedure and prompt files (today the post-implementation dual-review workflow and the PR-description/screenshot guidance under `crew/review/`) that generated briefs reference by absolute path.
   Everything personal to one captain's fleet (`.env`, `data/`, `state/`, `config/`, `projects/`, `.no-mistakes/`) is gitignored; never commit it.
   The root `.tasks.toml` is tracked `tasks-axi` config for `data/backlog.md`; compatible `tasks-axi` is the default backend for routine backlog mutations.
   Compatible means version 0.1.1 or newer and `tasks-axi update --help` exposing `--archive-body`.
@@ -99,7 +99,7 @@ tests/fm-fleet-snapshot-view.test.sh      # read-only fleet snapshot JSON and Ma
 tests/fm-x-mode.test.sh                   # X-mode poll, inbox context round-trip, reply threading, dismiss, completion follow-up counters/caps, dry-run preview, and .env-presence activation tests
 tests/fm-tangle-guard.test.sh             # primary-checkout tangle detection, read-only remediation suppression, and spawn/brief isolation tests
 tests/fm-stow-contract.test.sh            # /stow's inspect-then-update memory contract wording in the stow skill and AGENTS.md task-note guidance
-tests/fm-brief.test.sh                    # fm-brief.sh bash -n parse regression guard (issue #166), clean no-mistakes/direct-PR/local-only brief generation, ship project-memory authoring-bar wording, --review tier pinning, refusal, and validation tests, and config/branch-prefix default, custom-prefix, normalization, invalid-fallback, and scout-exemption coverage
+tests/fm-brief.test.sh                    # fm-brief.sh bash -n parse regression guard (issue #166), clean no-mistakes/direct-PR/local-only brief generation, ship project-memory authoring-bar wording, ship screenshot carve-out and guidance-pointer wording with scout exemption, --review tier pinning, refusal, and validation tests, and config/branch-prefix default, custom-prefix, normalization, invalid-fallback, and scout-exemption coverage
 tests/fm-ensure-agents-md.test.sh         # fm-ensure-agents-md.sh self-governance section: appended on skeleton creation and CLAUDE.md promotion, with separator handling for files missing a trailing newline
 tests/fm-dispatch-select.test.sh          # deterministic crew-dispatch profile selection, quota-balanced tie/stale/fallback behavior, and backward-compatible first-profile selection tests
 tests/fm-spawn-batch.test.sh              # batch dispatch and FM_HOME project-path scoping tests
