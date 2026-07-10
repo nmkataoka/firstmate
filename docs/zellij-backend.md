@@ -14,7 +14,7 @@ Pick zellij if you already use it as your terminal multiplexer and want firstmat
 Prerequisites:
 
 - `zellij` itself, version 0.44 or newer (installed 0.44.0 verified) - see [zellij.dev](https://zellij.dev) for install instructions.
-- The universal requirements detected by [`bin/fm-bootstrap.sh`](../bin/fm-bootstrap.sh); treehouse still provides the worktree, while zellij only provides the session.
+- Git, a verified agent harness, and the universal tools detected by [`bin/fm-bootstrap.sh`](../bin/fm-bootstrap.sh), following the authoritative [Quick Start requirements](../README.md#requirements); treehouse still provides the worktree, while zellij only provides the session.
 
 Select zellij by putting `zellij` in a local `config/backend` file - the durable way to pick it - or by exporting `FM_BACKEND=zellij` when you launch your harness for a one-off session; telling the first mate in chat to use zellij also works.
 Unlike tmux and herdr, zellij is **never** auto-detected - it always requires an explicit choice.

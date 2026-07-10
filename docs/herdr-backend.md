@@ -19,7 +19,7 @@ Firstmate only drives the `herdr` CLI as a separate process, which carries no AG
 Prerequisites:
 
 - `herdr` itself, protocol 14 or newer (installed 0.7.1 verified) - see [herdr.dev](https://herdr.dev) for install instructions.
-- The universal requirements detected by [`bin/fm-bootstrap.sh`](../bin/fm-bootstrap.sh); treehouse still provides the worktree, while herdr only provides the session.
+- Git, a verified agent harness, and the universal tools detected by [`bin/fm-bootstrap.sh`](../bin/fm-bootstrap.sh), following the authoritative [Quick Start requirements](../README.md#requirements); treehouse still provides the worktree, while herdr only provides the session.
 
 Select herdr by putting `herdr` in a local `config/backend` file - the durable way to pick it - or by exporting `FM_BACKEND=herdr` when you launch your harness for a one-off session; telling the first mate in chat to use herdr also works.
 It can also be auto-detected: when firstmate itself is running natively inside herdr (`HERDR_ENV=1`) and no explicit backend is set, firstmate auto-selects herdr and prints a one-time opt-out notice; running inside tmux nested in herdr always resolves to tmux instead.

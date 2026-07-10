@@ -13,7 +13,7 @@ Prerequisites:
 
 - The Orca app installed at `/Applications/Orca.app`, and **running**.
 - The `orca` CLI: `brew install orca`.
-- The universal requirements detected by [`bin/fm-bootstrap.sh`](../bin/fm-bootstrap.sh), which omit `tmux` and `treehouse` because Orca replaces both.
+- Git, a verified agent harness, and the universal tools detected by [`bin/fm-bootstrap.sh`](../bin/fm-bootstrap.sh), following the authoritative [Quick Start requirements](../README.md#requirements); Orca replaces `tmux` and `treehouse`.
 
 Select Orca by putting `orca` in a local `config/backend` file - the durable way to pick it - or by exporting `FM_BACKEND=orca` when you launch your harness for a one-off session; telling the first mate in chat to use Orca also works.
 It is never auto-detected.
