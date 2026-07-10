@@ -12,6 +12,10 @@
 # child is reaped when the call returns, leaving NO watcher running and a false
 # "already running" off the dying process. That exact mistake silently took
 # supervision down for ~30 minutes.
+# On a harness with a PreToolUse-equivalent hook, bin/fm-arm-pretool-check.sh
+# denies that anti-pattern (and piped/bundled/pkill variants of it) before the
+# command ever runs; see docs/arm-pretool-check.md. It is a seatbelt for known-
+# bad shapes, not a substitute for the verification this script performs.
 #
 # This script forks the watcher as a tracked child, then VERIFIES the outcome
 # before it settles in. It confirms a watcher process is genuinely alive AND the
@@ -19,20 +23,36 @@
 # single source of truth, shared with fm-watch.sh and fm-guard.sh), and prints
 # exactly one unambiguous status line:
 #   watcher: started pid=<N> (beacon fresh)              - it launched one and confirmed it
-#   watcher: healthy pid=<N> (beacon <age>s)             - a genuinely live+fresh watcher already held the lock
+#   watcher: attached pid=<N> (beacon <age>s)            - arm mode found a live+fresh watcher
+#                                                          holding the lock; this arm attaches and
+#                                                          waits until that cycle ends
+#   watcher: healthy pid=<N> (beacon <age>s)             - restart mode found a live+fresh
+#                                                          watcher it did not own and did
+#                                                          not just signal
 #   watcher: FAILED - no live watcher with a fresh beacon  - could not confirm one
-# It NEVER reports started/healthy off a stale beacon or a dead/reused pid: a
+# It NEVER reports started/attached/healthy off a stale beacon or a dead/reused pid: a
 # stale-beacon or dead-pid holder either self-heals (the fresh child steals the
 # dead lock per the singleton self-eviction/steal path and is confirmed) or this
-# returns the FAILED line. On started/healthy it exits zero; on FAILED it exits
-# non-zero so the failure is loud and a caller can react. A healthy line means a
-# live cycle already exists; do not churn extra no-op arms until that cycle fires.
+# returns the FAILED line. On started it waits the child and propagates the wake
+# reason; on attached it stays live until the identity-matched holder is no longer
+# healthy, then exits zero so the harness background-notify fires then (not as a
+# false empty wake). On restart-only healthy it exits zero after the duplicate
+# child stands down. On FAILED it exits non-zero so the failure is loud. A live
+# cycle already present means re-arm attaches - do not start a second watcher.
 #
 # --restart: stop ONLY this FM_HOME's watcher (the pid recorded in THIS home's
-# state/.watch.lock) and start a fresh one. It resolves and signals exactly that
-# pid, so it can never touch another home's watcher. NEVER `pkill -f
+# state/.watch.lock) and own a fresh cycle, or report restart-only healthy if a
+# live peer still holds the lock after the duplicate child stands down. That
+# peer must not be the pid this restart just sent TERM: a signaled holder that
+# outlives the stop wait (deferred signal, wedged) still shows a fresh beacon
+# and matching identity, but it is dying, so treating it as healthy would leave
+# no watcher moments after a success report - restart keeps polling for a
+# genuinely fresh cycle instead and reports FAILED if none confirms. It
+# resolves and signals exactly that pid, so it can never touch another home's
+# watcher. NEVER `pkill -f
 # bin/fm-watch.sh`: that pattern matches every firstmate home's watcher
-# (secondmate homes run the same script) and would kill siblings.
+# (secondmate homes run the same script) and would kill siblings. Restart never
+# takes the attach path.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,6 +66,8 @@ BEAT="$STATE/.last-watcher-beat"
 GRACE=${FM_GUARD_GRACE:-300}
 # How long to wait for a freshly forked watcher to acquire the lock and beat.
 CONFIRM_TIMEOUT=${FM_ARM_CONFIRM_TIMEOUT:-10}
+# Poll interval while attached to an existing healthy watcher.
+ATTACH_POLL=${FM_ARM_ATTACH_POLL:-0.5}
 
 clear_stale_recorded_watcher_lock() {
   local lock_home lock_path lock_identity
@@ -70,10 +92,36 @@ healthy_watcher() {
   HEALTHY_PID=$FM_WATCHER_HEALTHY_PID
 }
 
+report_attached() {
+  local age
+  age=$(fm_path_age "$BEAT")
+  echo "watcher: attached pid=$HEALTHY_PID (beacon ${age}s)"
+}
+
 report_healthy() {
   local age
   age=$(fm_path_age "$BEAT")
   echo "watcher: healthy pid=$HEALTHY_PID (beacon ${age}s)"
+}
+
+# Stay alive until the attached identity-matched healthy holder is gone.
+# If a different healthy watcher appears mid-attach (rare steal), re-attach.
+# Does not reprint the starter arm's wake reason line; exit 0 lets the harness
+# notify, and firstmate drains state/.wake-queue on background completion.
+attach_and_wait() {
+  local attached_pid=$1
+  while :; do
+    if healthy_watcher; then
+      if [ "$HEALTHY_PID" != "$attached_pid" ]; then
+        attached_pid=$HEALTHY_PID
+        report_attached
+      fi
+      sleep "$ATTACH_POLL"
+      continue
+    fi
+    # Attached cycle ended (pid gone, identity mismatch, or beacon no longer fresh).
+    exit 0
+  done
 }
 
 watch_output_has_wake() {
@@ -93,12 +141,14 @@ case "${1:-}" in
   *) echo "usage: $(basename "$0") [--restart]" >&2; exit 2 ;;
 esac
 
+restart_stopped_pid=
 if [ "$mode" = restart ]; then
   # Home-scoped stop: only the watcher pid recorded in THIS home's lock.
   lock_pid=$(cat "$WATCH_LOCK/pid" 2>/dev/null || true)
   if fm_pid_alive "$lock_pid"; then
     if fm_watcher_lock_matches_pid "$STATE" "$WATCH" "$lock_pid" "$FM_HOME"; then
       kill -TERM "$lock_pid" 2>/dev/null || true
+      restart_stopped_pid=$lock_pid
       # Wait for it to actually exit before relaunching, so the fresh watcher
       # either takes a released lock or reclaims a now-dead-pid stale lock instead
       # of seeing the dying one as a live holder and no-opping.
@@ -114,11 +164,12 @@ if [ "$mode" = restart ]; then
 fi
 
 # If a genuinely live+fresh watcher already holds the lock, do not start a second
-# one - the singleton would no-op anyway. Report it honestly and return success.
-# (--restart skips this: it just stopped this home's watcher and wants a fresh one.)
+# one - attach to that cycle and wait until it ends so the harness notify fires
+# then, not as an immediate empty wake. (--restart skips this: it just stopped
+# this home's watcher and wants a fresh one.)
 if [ "$mode" = arm ] && healthy_watcher; then
-  report_healthy
-  exit 0
+  report_attached
+  attach_and_wait "$HEALTHY_PID"
 fi
 
 # Start a watcher as a tracked child and confirm it before settling in. The child
@@ -160,11 +211,28 @@ while :; do
       rm -f "$child_out" 2>/dev/null || true
       exit "$rc"
     fi
-    # Another watcher won the singleton; our child stood down. Report the live one.
-    report_healthy
-    wait "$child" 2>/dev/null || true
-    rm -f "$child_out" 2>/dev/null || true
-    exit 0
+    # Another watcher won the singleton; our child stood down.
+    if [ "$mode" = arm ]; then
+      report_attached
+      wait "$child" 2>/dev/null || true
+      rm -f "$child_out" 2>/dev/null || true
+      child=
+      child_out=
+      trap - HUP TERM INT
+      attach_and_wait "$HEALTHY_PID"
+    fi
+    # Restart mode: a "healthy" holder that is the pid this restart just sent
+    # TERM is not healthy - it is dying with its signal deferred (or wedged),
+    # and its still-fresh beacon and matching identity would otherwise pass the
+    # honesty gate. Reporting healthy off it leaves NO watcher moments later.
+    # Keep polling instead: either it exits in time and the fresh cycle is
+    # confirmed, or the deadline lapses and this reports FAILED loudly.
+    if [ "$HEALTHY_PID" != "$restart_stopped_pid" ]; then
+      report_healthy
+      wait "$child" 2>/dev/null || true
+      rm -f "$child_out" 2>/dev/null || true
+      exit 0
+    fi
   fi
   if [ "$child_done" -eq 0 ] && ! fm_pid_alive "$child"; then
     wait "$child"
