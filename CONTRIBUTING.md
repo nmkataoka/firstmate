@@ -74,10 +74,12 @@ shellcheck bin/*.sh bin/backends/*.sh tests/*.sh   # lint the toolbelt and behav
 for test_script in tests/*.test.sh; do bash "$test_script"; done   # behavior tests, matching CI and no-mistakes commands.test
 tests/fm-wake-queue.test.sh               # durable wake queue losslessness, catch-up, double-drain, duplicate-collapse, and drain liveness guard tests
 tests/fm-watcher-lock.test.sh             # watcher singleton, lock-race, PID identity stability, watch-arm liveness, and guard-warning tests
-tests/fm-turnend-guard.test.sh            # shared supervision predicate plus Claude Stop-hook scoping, loop guard, fail-open, and live watcher health tests
+tests/fm-turnend-guard.test.sh            # shared supervision predicate plus every verified harness's turn-end adapter: Claude Stop-hook scoping, codex/opencode/pi/grok hook wiring, loop guards, fail-open, and live watcher health tests; Pi extension runtime cases skip when node cannot import TypeScript directly
 tests/fm-pi-primary-types.test.sh         # strict no-emit TypeScript check for both tracked Pi primary extensions against an installed Pi package
 FM_PI_LIVE_E2E=1 tests/fm-pi-primary-live-e2e.test.sh # opt-in real Pi TUI regression in an isolated home and private tmux socket
+tests/fm-pi-watch-extension.test.sh       # tracked Pi primary watcher extension and OpenCode primary watch plugin: self-hashing presence, external-healthy-watcher reporting, tool results, process-exit cleanup, lock/scope gating, and re-arm coordination with the turn-end guard; runtime cases skip when node cannot import TypeScript directly
 tests/fm-arm-pretool-check.test.sh        # PreToolUse watcher-arm seatbelt: CLI/stdin allow-deny table, fail-open, --claude output shaping, and all five harness wiring files
+tests/fm-watch-checkpoint.test.sh         # bounded foreground Codex-style watcher checkpoint: quiet exit 124, actionable pass-through, preserved watcher environment, and existing-singleton non-success
 tests/fm-watch-triage.test.sh             # always-on watcher triage: benign absorb, actionable surface, stale status-log override, acked terminal-park absorb and ack invalidation, wedge threshold, repeated wedge demand marker, heartbeat backstop, fire-time beacon re-stamp, and afk one-shot coherence
 tests/fm-daemon.test.sh                   # sub-supervisor classifier, /afk presence-gating, acked terminal-park self-handling, fm-afk-start daemon-lock lifecycle, max-defer, composer, and fm-send submit tests
 tests/fm-send-settle.test.sh              # fm-send post-submit settle pause, tuning, disable, and --key bypass tests
@@ -90,12 +92,15 @@ tests/fm-afk-inject-e2e.test.sh           # private-socket end-to-end test of th
 tests/fm-afk-inject-herdr-e2e.test.sh     # real-herdr end-to-end test of the afk daemon's herdr transport, on an isolated throwaway HERDR_SESSION: partial-input deferral, swallowed-Enter retry, a normal digest, and the max-defer wedge alarm on a persistently pending composer
 tests/fm-bootstrap.test.sh                # bootstrap dependency, feature-probe, fleet-sync timeout, and crew-dispatch reporting tests
 tests/fm-session-start.test.sh            # fm-session-start.sh: ABSENT vs empty-vs-present digest files, lock-refusal read-only path skipping every mutating step, diagnostics-first section ordering, status-tail bounding, tmux/herdr endpoint liveness, and composition of the real fm-lock/fm-bootstrap/fm-wake-drain scripts
+tests/fm-supervision-instructions.test.sh # harness-aware supervision block rendering: selected-harness-only output, unknown fallback, conditional X-mode/afk stanzas, repair lines, grok background-notify shape, and effective config/extension paths
 tests/fm-grok-harness.test.sh             # grok adapter spawn hook, token guard, teardown cleanup, and session-lock detection tests
 tests/fm-fleet-sync.test.sh               # project clone refresh: safe detached recovery, STUCK drift reports, benign skips, single-project name resolution, and bootstrap relay
 tests/fm-fleet-snapshot-view.test.sh      # read-only fleet snapshot JSON and Markdown view coverage: stable ordering, current-state vs status-event separation, backlog parsing, scout reports, secondmate return-channel guidance, and operational directory overrides
 tests/fm-x-mode.test.sh                   # X-mode poll, inbox context round-trip, reply threading, dismiss, completion follow-up counters/caps, dry-run preview, and .env-presence activation tests
 tests/fm-tangle-guard.test.sh             # primary-checkout tangle detection, read-only remediation suppression, and spawn/brief isolation tests
+tests/fm-stow-contract.test.sh            # /stow's inspect-then-update memory contract wording in the stow skill and AGENTS.md task-note guidance
 tests/fm-brief.test.sh                    # fm-brief.sh bash -n parse regression guard (issue #166), clean no-mistakes/direct-PR/local-only brief generation, ship project-memory authoring-bar wording, --review tier pinning, refusal, and validation tests, and config/branch-prefix default, custom-prefix, normalization, invalid-fallback, and scout-exemption coverage
+tests/fm-ensure-agents-md.test.sh         # fm-ensure-agents-md.sh self-governance section: appended on skeleton creation and CLAUDE.md promotion, with separator handling for files missing a trailing newline
 tests/fm-dispatch-select.test.sh          # deterministic crew-dispatch profile selection, quota-balanced tie/stale/fallback behavior, and backward-compatible first-profile selection tests
 tests/fm-spawn-batch.test.sh              # batch dispatch and FM_HOME project-path scoping tests
 tests/fm-spawn-dispatch-profile.test.sh   # concrete dispatch profile flags: active-profile backstop, harness/model/effort meta, launch templates, batch forwarding, and secondmate exemption
