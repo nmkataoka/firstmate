@@ -284,8 +284,18 @@ secondmate_liveness_sweep() {
     target=$(fm_backend_target_of_meta "$meta")
     [ -n "$target" ] || target="$window"
     verdict=$(fm_backend_agent_alive "$backend" "$target" 2>/dev/null) || verdict="unknown"
-    case "$harness" in
-      claude|codex|opencode|pi|grok) ;;
+    # A dead verdict is trusted only where the backend's classifier is
+    # verified for the harness. herdr's dead collapses in no-agent (a live
+    # pane whose `agent get` says agent_not_found), and herdr's native agent
+    # registration is empirically verified only for claude and codex
+    # (docs/herdr-backend.md) - a live agent herdr never registered would
+    # read no-agent, so acting on that would kill a live secondmate. Other
+    # backends keep the verified-harness gate calibrated to the tmux
+    # classifier, where dead means a bare shell.
+    case "$backend:$harness" in
+      herdr:claude|herdr:codex) ;;
+      herdr:*) [ "$verdict" = dead ] && verdict=unknown ;;
+      *:claude|*:codex|*:opencode|*:pi|*:grok) ;;
       *) [ "$verdict" = dead ] && verdict=unknown ;;
     esac
     case "$verdict" in
