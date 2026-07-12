@@ -47,12 +47,14 @@ mkrec() {  # <pane_id> <status>
 
 reset_state
 fm_write_meta "$STATE_DIR/tk1.meta" "window=default:wG:pQ" "backend=herdr" "kind=ship"
+printf 'blocked: waiting for credentials\n' > "$STATE_DIR/tk1.status"
 handle_push_transition herdr default "$(mkrec wG:pQ blocked)"
 [ -e "$STATE_DIR/.wake-queue" ] || fail "handle_push_transition should enqueue a wake for a blocked crew"
 grep -q 'stale' "$STATE_DIR/.wake-queue" || fail "the enqueued wake must be a stale record: $(cat "$STATE_DIR/.wake-queue")"
 grep -q 'default:wG:pQ' "$STATE_DIR/.wake-queue" || fail "the stale record must name the crew's window"
 grep -q 'herdr: agent blocked' "$STATE_DIR/.wake-queue" || fail "the stale payload must name the herdr-blocked cause"
 [ -s "$WAKE_LOG" ] || fail "handle_push_transition must wake the supervisor for a blocked crew"
+[ "$(cat "$WAKE_LOG")" = "stale: default:wG:pQ" ] || fail "the supervisor wake must carry the exact unannotated window target: $(cat "$WAKE_LOG")"
 [ -e "$STATE_DIR/.herdr-escalated-default_wG_pQ" ] || fail "handle_push_transition must commit dedupe only after enqueue"
 pass "handle_push_transition: a blocked crew enqueues a stale wake naming its window and wakes the supervisor"
 

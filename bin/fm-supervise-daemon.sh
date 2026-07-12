@@ -320,13 +320,15 @@ _collapse_newlines() {  # <text>
 # summary firstmate would otherwise have to re-read.
 
 classify_signal() {  # <reason-after-colon> <state>
-  local reason=$1 state=$2 f last distilled="" rel="" all_seen=1 task seen
+  local reason=$1 state=$2 f last summary display distilled="" rel="" all_seen=1 task seen
   for f in $reason; do
     [ -e "$f" ] || continue
     last=$(last_status_line "$f")
     [ -n "$last" ] || continue
-    distilled="${distilled}$(basename "$f"): ${last} | "
-    status_is_captain_relevant "$last" || continue
+    summary=$(status_captain_relevant_summary "$f")
+    display=${summary:-$last}
+    distilled="${distilled}$(basename "$f"): ${display} | "
+    [ -n "$summary" ] || continue
     rel=1
     # Dedupe against the catch-all scan: if this status was already escalated
     # (seen marker matches), skip escalating again. The seen marker is the
@@ -334,7 +336,7 @@ classify_signal() {  # <reason-after-colon> <state>
     # heartbeat scan. all_seen stays 1 only if EVERY relevant file was seen.
     task=$(basename "$f"); task="${task%.status}"
     seen="$state/.subsuper-seen-status-$(_stale_key "$task")"
-    [ "$(cat "$seen" 2>/dev/null || true)" = "$last" ] || all_seen=0
+    [ "$(cat "$seen" 2>/dev/null || true)" = "$summary" ] || all_seen=0
   done
   # strip a trailing " | " separator so the distilled line is clean
   distilled="${distilled% | }"
@@ -353,9 +355,19 @@ classify_signal() {  # <reason-after-colon> <state>
 # first sight of a non-terminal stale it returns "self" and the caller records a
 # timestamp marker; persistence is escalated by housekeeping's recheck, not here.
 classify_stale() {  # <window> <state>
-  local win=$1 state=$2 task last seen
+  local win=$1 state=$2 task last summary seen
   task=$(window_to_task "$win" "$state")
   last=$(last_status_line "$state/$task.status")
+  summary=$(status_captain_relevant_summary "$state/$task.status")
+  if [ -n "$summary" ]; then
+    seen="$state/.subsuper-seen-status-$(_stale_key "$task")"
+    if [ "$(cat "$seen" 2>/dev/null || true)" = "$summary" ]; then
+      printf 'self|stale + terminal (already escalated by signal): %s' "$summary"
+      return
+    fi
+    printf 'escalate|stale + terminal status: %s' "$summary"
+    return
+  fi
   if [ -n "$last" ] && status_is_paused "$last"; then
     # A DECLARED external-wait pause (fm-classify-lib.sh): an idle pane is EXPECTED,
     # so this is not a wedge. The caller records a pause marker (long re-surface
@@ -363,17 +375,6 @@ classify_stale() {  # <window> <state>
     # status line already read, no fm-crew-state.sh call, mirroring the daemon's
     # existing status-log classification.
     printf 'pause|paused (awaiting external), rechecked on a long cadence: %s' "$last"
-    return
-  fi
-  if [ -n "$last" ] && status_is_captain_relevant "$last"; then
-    # Dedupe against the signal path: if this status was already escalated
-    # (seen marker matches), self-handle to avoid a duplicate in the digest.
-    seen="$state/.subsuper-seen-status-$(_stale_key "$task")"
-    if [ "$(cat "$seen" 2>/dev/null || true)" = "$last" ]; then
-      printf 'self|stale + terminal (already escalated by signal): %s' "$last"
-      return
-    fi
-    printf 'escalate|stale + terminal status: %s' "$last"
     return
   fi
   # Non-terminal (or no status): defer to the persistence recheck. The caller
@@ -494,7 +495,7 @@ sync_pause_markers_from_signal() {  # <state> <signal files>
 # heartbeat catch-all scan does not re-fire it. The single source of truth for
 # the .subsuper-seen-status-<task> dedup state: called from both the per-wake
 # escalate path and the catch-all scan.
-mark_status_seen() {  # <state> <task> <last-line>
+mark_status_seen() {  # <state> <task> <summary>
   local state=$1 task=$2 line=$3
   printf '%s' "$line" > "$state/.subsuper-seen-status-$(_stale_key "$task")"
 }
@@ -503,22 +504,20 @@ mark_status_seen() {  # <state> <task> <last-line>
 # seen, so the catch-all scan does not re-escalate the same line within
 # HEARTBEAT_SCAN_SECS. Mirrors classify_signal/classify_stale's relevance test.
 mark_escalated_seen() {  # <kind> <arg> <state>
-  local kind=$1 arg=$2 state=$3 f last task
+  local kind=$1 arg=$2 state=$3 f summary task
   case "$kind" in
     signal)
       for f in $arg; do
         [ -e "$f" ] || continue
-        last=$(last_status_line "$f")
-        [ -n "$last" ] || continue
-        status_is_captain_relevant "$last" || continue
+        summary=$(status_captain_relevant_summary "$f")
+        [ -n "$summary" ] || continue
         task=$(basename "$f"); task="${task%.status}"
-        mark_status_seen "$state" "$task" "$last"
+        mark_status_seen "$state" "$task" "$summary"
       done ;;
     stale)
       task=$(window_to_task "$arg" "$state")
-      last=$(last_status_line "$state/$task.status")
-      [ -n "$last" ] && status_is_captain_relevant "$last" \
-        && mark_status_seen "$state" "$task" "$last" ;;
+      summary=$(status_captain_relevant_summary "$state/$task.status")
+      [ -n "$summary" ] && mark_status_seen "$state" "$task" "$summary" ;;
   esac
 }
 
@@ -1205,8 +1204,8 @@ handle_wake() {  # <reason> <state>
       # wake, escalates a wedge.
       if [ "$kind" = "stale" ]; then
         task=$(window_to_task "$arg" "$state")
-        last=$(last_status_line "$state/$task.status")
-        if [ -n "$last" ] && status_is_captain_relevant "$last"; then
+        last=$(status_captain_relevant_summary "$state/$task.status")
+        if [ -n "$last" ]; then
           stale_marker_remove "$arg" "$state"
         else
           pause_marker_remove "$arg" "$state"

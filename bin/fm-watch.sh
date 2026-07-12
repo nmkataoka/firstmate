@@ -436,16 +436,15 @@ run_check() {
 # from one that has not - the latter being a per-wake-path miss it must surface.
 _hb_surfaced_path() { printf '%s/.hb-surfaced-%s' "$STATE" "$(printf '%s' "$1" | tr ':/.' '___')"; }
 
-# Record a status file's captain-relevant last line as surfaced (no-op for a
+# Record a status file's captain-relevant summary as surfaced (no-op for a
 # non-captain-relevant or empty status). Call AFTER the wake is enqueued, so the
 # enqueue-before-suppress ordering holds for this marker too.
 mark_surfaced() {  # <status-file>
-  local f=$1 task last
+  local f=$1 task summary
   task=$(basename "$f"); task="${task%.status}"
-  last=$(last_status_line "$f")
-  [ -n "$last" ] || return 0
-  status_is_captain_relevant "$last" || return 0
-  printf '%s' "$last" > "$(_hb_surfaced_path "$task")"
+  summary=$(status_captain_relevant_summary "$f")
+  [ -n "$summary" ] || return 0
+  printf '%s' "$summary" > "$(_hb_surfaced_path "$task")"
 }
 
 # Mark every current captain-relevant status as surfaced. Called after the
@@ -571,7 +570,8 @@ handle_push_transition() {  # <backend> <session> <record>
   [ -n "$pane_id" ] || { sleep 1; return; }
   window="$session:$pane_id"
   task=$(window_to_task "$window" "$STATE")
-  if status_is_paused "$(last_status_line "$STATE/$task.status")"; then
+  if [ -z "$(status_captain_relevant_summary "$STATE/$task.status")" ] \
+    && status_is_paused "$(last_status_line "$STATE/$task.status")"; then
     triage_log "absorbed push $to (declared pause, awaiting external): $window"
     fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || exit 1
     return
@@ -580,7 +580,7 @@ handle_push_transition() {  # <backend> <session> <record>
   fm_wake_append stale "$window" "$reason" || exit 1
   fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || exit 1
   mark_surfaced "$STATE/$task.status"
-  wake "$reason"
+  wake "stale: $window"
 }
 
 # --- Main entry: the runtime below runs only when this file is executed as a

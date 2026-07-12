@@ -85,7 +85,7 @@ test_signal_reason_is_actionable_classifier() {
   dir=$(make_case classify-signal); state="$dir/state"
   printf 'working: step 1\nworking: step 2\n' > "$state/a.status"
   signal_reason_is_actionable "$state/a.status" && fail "benign working: signal classified actionable"
-  printf 'working: x\nneeds-decision: pick A or B\n' > "$state/b.status"
+  printf 'working: x\nneeds-decision [key=choice]: pick A or B\nworking: continued on unrelated setup\n' > "$state/b.status"
   signal_reason_is_actionable "$state/b.status" || fail "captain-relevant signal classified benign"
   : > "$state/c.turn-ended"
   signal_reason_is_actionable "$state/c.turn-ended" && fail "a bare turn-ended marker classified actionable"
@@ -100,7 +100,7 @@ test_stale_is_terminal_classifier() {
   printf 'done: ready in branch fm/x\n' > "$state/term.status"
   stale_is_terminal "sess:fm-term" "$state" || fail "terminal stale status not classified terminal"
   fm_write_meta "$state/herdr-term.meta" "window=default:w1:p2" "backend=herdr"
-  printf 'done: ready in branch fm/herdr\n' > "$state/herdr-term.status"
+  printf 'needs-decision [key=deploy]: choose region\nworking: preparing both options\n' > "$state/herdr-term.status"
   stale_is_terminal "default:w1:p2" "$state" || fail "terminal herdr stale status not resolved through metadata"
   printf 'working: compiling\n' > "$state/nonterm.status"
   stale_is_terminal "sess:fm-nonterm" "$state" && fail "non-terminal stale classified terminal"
@@ -112,12 +112,15 @@ test_scan_captain_relevant_statuses_classifier() {
   local dir state out
   dir=$(make_case classify-scan); state="$dir/state"
   printf 'working: a\n' > "$state/one.status"
-  printf 'blocked: no perms\n' > "$state/two.status"
+  printf 'blocked [key=access]: no perms\nworking: collecting diagnostics\n' > "$state/two.status"
   printf 'done: PR https://x/y/pull/1\n' > "$state/three.status"
+  printf 'needs-decision [key=closed]: old choice\nresolved [key=closed]: captain chose A\nworking: implementing A\n' > "$state/four.status"
   out=$(scan_captain_relevant_statuses "$state")
   printf '%s' "$out" | grep -F "two.status" >/dev/null || fail "scan missed a blocked: status"
+  printf '%s' "$out" | grep -F "blocked [key=access]: no perms" >/dev/null || fail "scan lost an open keyed decision behind a later event"
   printf '%s' "$out" | grep -F "three.status" >/dev/null || fail "scan missed a done: status"
   printf '%s' "$out" | grep -F "one.status" >/dev/null && fail "scan surfaced a benign working: status"
+  printf '%s' "$out" | grep -F "four.status" >/dev/null && fail "scan retained an explicitly resolved decision"
   pass "scan_captain_relevant_statuses lists only captain-relevant statuses"
 }
 
@@ -993,14 +996,14 @@ test_heartbeat_backstop_surfaces_unsurfaced_status() {
   # per-poll signal scan stays quiet) but which was never surfaced (no
   # .hb-surfaced-* marker). This stands in for a per-wake-path miss; the heartbeat
   # fleet-scan backstop must catch it and wake firstmate.
-  printf 'done: PR https://example.test/pr/5\n' > "$state/miss.status"
+  printf 'needs-decision [key=merge]: choose merge strategy\nworking: preparing conflict report\n' > "$state/miss.status"
   sig=$(seen_sig "$state/miss.status"); printf '%s' "$sig" > "$state/.seen-miss_status"
   PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=1 "$WATCH" > "$out" &
   pid=$!
   wait_for_exit "$pid" 40 || fail "heartbeat backstop did not surface an unsurfaced captain-relevant status"
   grep -Fx "heartbeat" "$out" >/dev/null || fail "backstop did not exit with a heartbeat wake"
-  [ "$(cat "$state/.hb-surfaced-miss" 2>/dev/null || true)" = "done: PR https://example.test/pr/5" ] \
+  [ "$(cat "$state/.hb-surfaced-miss" 2>/dev/null || true)" = "needs-decision [key=merge]: choose merge strategy" ] \
     || fail "backstop did not record the status as surfaced (would re-fire next heartbeat)"
   FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after the backstop heartbeat failed"
   grep "$(printf '\theartbeat\t')" "$drain_out" >/dev/null || fail "backstop heartbeat was not queued"

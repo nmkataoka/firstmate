@@ -187,6 +187,36 @@ status_open_decisions() {  # <status-file>
   printf '%s' "$open"
 }
 
+status_captain_relevant_summary() {  # <status-file>
+  local f=$1 open key verb note line summary=''
+  [ -f "$f" ] || return 0
+  open=$(status_open_decisions "$f")
+  if [ -n "$open" ]; then
+    while IFS=$'\t' read -r key verb note; do
+      [ -n "$key" ] || continue
+      if [ "$key" = default ]; then
+        line="$verb: $note"
+      else
+        line="$verb [key=$key]: $note"
+      fi
+      status_is_captain_relevant "$line" || continue
+      [ -n "$summary" ] && summary="$summary | "
+      summary="$summary$line"
+    done <<EOF
+$open
+EOF
+    if [ -n "$summary" ]; then
+      printf '%s' "$summary"
+      return 0
+    fi
+  fi
+  line=$(last_status_line "$f")
+  if status_is_captain_relevant "$line"; then
+    printf '%s' "$line"
+  fi
+  return 0
+}
+
 # task id from a recorded window target, falling back to the tmux-shaped
 # "<session>:fm-<id>" form when no metadata state is available.
 window_to_task() {
@@ -207,19 +237,18 @@ window_to_task() {
 }
 
 # 0 (actionable) if ANY status file listed in a "signal:" wake carries a
-# captain-relevant last line; 1 otherwise. Pass the space-separated file list that
+# captain-relevant current summary; 1 otherwise. Pass the space-separated file list that
 # follows the "signal:" prefix. Non-.status arguments (e.g. .turn-ended markers,
 # which never carry a verb) are skipped. A 1 here is NOT "benign" on its own: a
 # no-verb signal (a bare turn-end, a working: note) is only benign when the crew is
 # also provably working (signal_crew_provably_working below); otherwise it surfaces.
 signal_reason_is_actionable() {  # <file> ...
-  local f last
+  local f summary
   for f in "$@"; do
     [ -e "$f" ] || continue
     case "$f" in *.status) ;; *) continue ;; esac
-    last=$(last_status_line "$f")
-    [ -n "$last" ] || continue
-    status_is_captain_relevant "$last" && return 0
+    summary=$(status_captain_relevant_summary "$f")
+    [ -n "$summary" ] && return 0
   done
   return 1
 }
@@ -295,29 +324,29 @@ signal_crew_provably_working() {  # <file> ...
   return 0
 }
 
-# 0 (terminal/actionable) if a stale window's last status line is
+# 0 (terminal/actionable) if a stale window's current status summary is
 # captain-relevant; 1 otherwise, including the no-status case. A 1 only means
 # "non-terminal"; the always-on watcher then applies crew_is_provably_working,
 # while the away-mode daemon applies its persistence recheck.
 stale_is_terminal() {  # <window> <state>
-  local win=$1 state=$2 last
-  last=$(last_status_line "$state/$(window_to_task "$win" "$state").status")
-  [ -n "$last" ] && status_is_captain_relevant "$last"
+  local win=$1 state=$2 summary
+  summary=$(status_captain_relevant_summary "$state/$(window_to_task "$win" "$state").status")
+  [ -n "$summary" ]
 }
 
-# Print "<file>\t<task>\t<last-line>" for every state/*.status whose last line is
+# Print "<file>\t<task>\t<summary>" for every state/*.status whose current summary is
 # captain-relevant. This is the cheap fleet-scan both supervisors run as a
 # catch-all backstop for a captain-relevant status the per-wake path might miss.
 # No dedup is applied here: each consumer dedupes against its own seen-state (the
 # daemon against .subsuper-seen-status-*, the watcher against .seen-* signatures).
 scan_captain_relevant_statuses() {  # <state>
-  local state=$1 f last task
+  local state=$1 f summary task
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
-    last=$(last_status_line "$f")
-    status_is_captain_relevant "$last" || continue
+    summary=$(status_captain_relevant_summary "$f")
+    [ -n "$summary" ] || continue
     task=$(basename "$f"); task="${task%.status}"
-    printf '%s\t%s\t%s\n' "$f" "$task" "$last"
+    printf '%s\t%s\t%s\n' "$f" "$task" "$summary"
   done
   return 0
 }

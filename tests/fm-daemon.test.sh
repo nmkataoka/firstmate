@@ -111,6 +111,15 @@ test_classify_terminal_signal_escalates() {
     out=$(FM_STATE_OVERRIDE="$state" classify_signal "$state/t.status" "$state")
     case "$out" in escalate\|*) ;; *) fail "captain verb did not escalate ($kw): $out" ;; esac
   done
+  printf 'needs-decision [key=api]: choose API shape\nworking: implementing shared pieces\n' > "$state/t.status"
+  out=$(FM_STATE_OVERRIDE="$state" classify_signal "$state/t.status" "$state")
+  case "$out" in
+    escalate\|*"needs-decision [key=api]: choose API shape"*) ;;
+    *) fail "open keyed decision was masked by a later signal event: $out" ;;
+  esac
+  printf 'resolved [key=api]: use option A\nworking: implementing A\n' >> "$state/t.status"
+  out=$(FM_STATE_OVERRIDE="$state" classify_signal "$state/t.status" "$state")
+  case "$out" in self\|*) ;; *) fail "resolved keyed decision still escalated: $out" ;; esac
   pass "captain-relevant status verbs escalate"
 }
 
@@ -146,7 +155,7 @@ test_stale_terminal_escalates() {
   out=$(FM_STATE_OVERRIDE="$state" classify_stale "sess:fm-fin-t5" "$state")
   case "$out" in escalate\|*) ;; *) fail "terminal stale did not escalate: $out" ;; esac
   fm_write_meta "$state/herdr-t5.meta" "window=default:w1:p2" "backend=herdr"
-  printf 'done: ready in branch fm/herdr\n' > "$state/herdr-t5.status"
+  printf 'needs-decision [key=deploy]: choose region\npaused: waiting for a maintenance window\n' > "$state/herdr-t5.status"
   out=$(FM_STATE_OVERRIDE="$state" classify_stale "default:w1:p2" "$state")
   case "$out" in escalate\|*) ;; *) fail "terminal herdr stale did not escalate through metadata: $out" ;; esac
   pass "stale + terminal status escalates immediately"
@@ -562,7 +571,7 @@ test_heartbeat_scan_dedup() {
   local dir state
   dir=$(make_supercase scan-dedup)
   state="$dir/state"
-  printf 'done: ready\n' > "$state/dup-t6.status"
+  printf 'needs-decision [key=release]: choose release channel\nworking: preparing both channels\n' > "$state/dup-t6.status"
   rm -f "$state/.subsuper-last-scan"
   FM_STATE_OVERRIDE="$state" housekeeping "$state"
   [ -s "$state/.subsuper-escalations" ] || fail "catch-all scan did not escalate a terminal"
