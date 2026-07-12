@@ -17,7 +17,7 @@ batched digest rather than per-wake injections.
 ## What it does
 
 1. **Enter the lifecycle through `bin/fm-afk-launch.sh`.**
-   This owns the durable state write, session-scoped stale-artifact clearing,
+   This owns the durable state write, stale wedge-marker clearing,
    terminal record, and rollback.
    The flag survives a firstmate restart, so recovery re-enters afk when it is present.
 
@@ -212,8 +212,8 @@ the marker lets firstmate distinguish it from a real captain message.
 
 ## Stale-artifact lifecycle
 
-Treat `state/.subsuper-escalations`, its `.since` sidecar, and `state/.subsuper-inject-wedged` as session-scoped delivery artifacts, not as the durable work record.
-Always enter through `bin/fm-afk-launch.sh`, which clears prior-session artifacts only for a fresh entry and preserves the current session's buffer on refresh.
+Treat `state/.subsuper-escalations` and its `.since` sidecar as pending delivery state that survives a daemon restart, while `state/.subsuper-inject-wedged` is a session-scoped alarm marker.
+Always enter through `bin/fm-afk-launch.sh`, which clears only the prior-session wedge marker on a fresh entry and preserves all delivery state on refresh.
 Always exit through `bin/fm-afk-launch.sh stop`, which keeps `state/.afk` present through the daemon's shutdown flush and clears it last.
 `docs/herdr-backend.md` "Stale-artifact lifecycle fix" owns the mechanism and verification evidence.
 

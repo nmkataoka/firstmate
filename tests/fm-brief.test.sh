@@ -260,6 +260,38 @@ test_pause_verb_override_renders_all_brief_scaffolds() {
   pass "fm-brief.sh: custom pause verb renders in every scaffold"
 }
 
+test_resolution_verb_override_renders_all_brief_scaffolds() {
+  local home kind id brief
+  home="$TMP_ROOT/resolution-verb-home"
+  write_registry "$home"
+
+  for kind in secondmate scout ship; do
+    id="brief-resolution-$kind"
+    case "$kind" in
+      secondmate)
+        FM_HOME="$home" FM_CLASSIFY_RESOLVE_VERB=closed FM_SECONDMATE_CHARTER=charter \
+          FM_SECONDMATE_SCOPE=scope "$ROOT/bin/fm-brief.sh" "$id" --secondmate --no-projects >/dev/null 2>&1
+        ;;
+      scout)
+        FM_HOME="$home" FM_CLASSIFY_RESOLVE_VERB=closed \
+          "$ROOT/bin/fm-brief.sh" "$id" direct-proj --scout >/dev/null 2>&1
+        ;;
+      ship)
+        FM_HOME="$home" FM_CLASSIFY_RESOLVE_VERB=closed \
+          "$ROOT/bin/fm-brief.sh" "$id" direct-proj >/dev/null 2>&1
+        ;;
+    esac
+    brief="$home/data/$id/brief.md"
+    # shellcheck disable=SC2016 # Literal backticks and braces must remain unexpanded.
+    assert_grep 'append `closed: {how it was decided or unblocked}`' "$brief" \
+      "$kind brief did not render the configured resolution verb"
+    # shellcheck disable=SC2016 # Literal backticks and braces must remain unexpanded.
+    assert_no_grep 'append `resolved: {how it was decided or unblocked}`' "$brief" \
+      "$kind brief still instructs the default resolution verb"
+  done
+  pass "fm-brief.sh: custom resolution verb renders in every scaffold"
+}
+
 # --review=<tier> must put the post-implementation review contract into a
 # direct-PR ship brief: the pinned tier, the absolute path to the tracked crew
 # procedure, and the review-shaped done line, all resolvable without any
@@ -352,6 +384,7 @@ test_herdr_lab_omission_is_loud_for_ship_and_scout
 test_herdr_lab_contract_applies_to_scouts_but_not_secondmates
 test_secondmate_no_projects_charter
 test_pause_verb_override_renders_all_brief_scaffolds
+test_resolution_verb_override_renders_all_brief_scaffolds
 test_review_flag_direct_pr
 test_review_flag_refusals
 test_ship_screenshot_guidance

@@ -718,12 +718,12 @@ The topology invariant (entering AND exiting away mode leaves the captain's acti
 
 ### Stale-artifact lifecycle fix (same change)
 
-The away daemon's `state/.subsuper-escalations` (+ `.since`) and `state/.subsuper-inject-wedged` are a transient delivery cache, cleared only on a successful flush.
-Two ordering/scoping bugs leaked them into the next away session: on a clean exit the `/afk` skill cleared `state/.afk` BEFORE stopping the daemon, so the daemon's shutdown flush hit its own presence gate (`inject_msg`: `afk_active || return 1`) and was a no-op; and nothing cleared them on entry.
+The away daemon's `state/.subsuper-escalations` (+ `.since`) are pending delivery state cleared only on a successful flush, while `state/.subsuper-inject-wedged` is a session-scoped alarm marker.
+Two lifecycle gaps affected them: on a clean exit the `/afk` skill cleared `state/.afk` BEFORE stopping the daemon, so the daemon's shutdown flush hit its own presence gate (`inject_msg`: `afk_active || return 1`) and was a no-op; and nothing cleared a prior session's wedge marker on entry.
 The fix: `bin/fm-afk-launch.sh stop` SIGTERMs the daemon while `state/.afk` is still present so the flush can run, closes its recorded terminal by exact id, and then clears `state/.afk` last.
-On entry the launcher drops the prior session's artifacts when the daemon is not already running, never on a refresh; the sourceable `bin/fm-afk-start.sh` exposes the shared clearing helper and also applies it for a direct, non-prepared fresh start.
-This never drops a genuinely-pending escalation: the durable record is `state/.wake-queue` plus each crew's `state/<id>.status`, and any still-true condition is re-escalated by the daemon's heartbeat catch-all scan.
-Covered by the unit cases in `tests/fm-afk-launch.test.sh` (clear-on-fresh-entry vs refresh, and the stop ordering asserting the daemon saw `state/.afk` present at SIGTERM).
+On entry the launcher drops only the prior session's wedge marker when the daemon is not already running, never on a refresh; the sourceable `bin/fm-afk-start.sh` exposes the shared clearing helper and also applies it for a direct, non-prepared fresh start.
+The buffered escalation and its first-append sidecar survive a daemon restart so existing dedupe markers cannot suppress undelivered work.
+Covered by the unit cases in `tests/fm-afk-launch.test.sh` (pending-delivery preservation and wedge clearing on fresh entry vs refresh, and the stop ordering asserting the daemon saw `state/.afk` present at SIGTERM).
 
 ## Known gaps and follow-up notes
 

@@ -3,9 +3,9 @@
 # launch (bin/fm-afk-launch.sh) and the away-mode stale-artifact lifecycle fixes
 # (bin/fm-afk-start.sh). Two layers:
 #
-#   UNIT (always run, no backend): the session-scoped stale-artifact clear on a
-#   fresh entry vs a refresh, and the correct-ordered stop (daemon SIGTERM'd
-#   while state/.afk is still present, .afk cleared last).
+#   UNIT (always run, no backend): pending delivery preservation and stale wedge
+#   clearing on a fresh entry vs a refresh, and the correct-ordered stop (daemon
+#   SIGTERM'd while state/.afk is still present, .afk cleared last).
 #
 #   E2E TOPOLOGY (per backend, skipped when its tool is absent): the anti-
 #   regression for the pane split/shrink - entering AND exiting away mode leaves
@@ -41,26 +41,27 @@ GLOBAL_CLEANUP() {
 trap GLOBAL_CLEANUP EXIT
 
 # ---------------------------------------------------------------------------
-# UNIT 1: fm_afk_clear_stale_artifacts removes exactly the three stale artifacts.
+# UNIT 1: fm_afk_clear_stale_artifacts preserves pending delivery state and
+# removes only the stale wedge marker.
 # ---------------------------------------------------------------------------
 unit_clear_stale() {
   local st
   st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-clear.XXXXXX")
   mkdir -p "$st/state"
-  : > "$st/state/.subsuper-escalations"
-  : > "$st/state/.subsuper-escalations.since"
+  printf 'pending\n' > "$st/state/.subsuper-escalations"
+  printf '123\n' > "$st/state/.subsuper-escalations.since"
   : > "$st/state/.subsuper-inject-wedged"
   : > "$st/state/.wake-queue"          # durable queue must be untouched
   # Source fm-afk-start.sh inside a child bash (it sets `set -eu` and would
   # otherwise leak that into this test shell) and call the clear helper.
   FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" \
     bash -c '. "$1"; fm_afk_clear_stale_artifacts "$2"' _ "$START" "$st/state"
-  if [ ! -e "$st/state/.subsuper-escalations" ] \
-     && [ ! -e "$st/state/.subsuper-escalations.since" ] \
+  if [ "$(cat "$st/state/.subsuper-escalations")" = pending ] \
+     && [ "$(cat "$st/state/.subsuper-escalations.since")" = 123 ] \
      && [ ! -e "$st/state/.subsuper-inject-wedged" ]; then
-    pass "clear-stale: removes escalations buffer, sidecar, and wedge marker"
+    pass "clear-stale: preserves pending delivery state and removes the wedge marker"
   else
-    fail "clear-stale: stale artifacts survived"
+    fail "clear-stale: pending delivery state changed or wedge marker survived"
   fi
   if [ -e "$st/state/.wake-queue" ]; then
     pass "clear-stale: leaves the durable wake-queue intact (no pending work dropped)"
@@ -71,14 +72,28 @@ unit_clear_stale() {
 }
 
 # ---------------------------------------------------------------------------
-# UNIT 2: a FRESH entry clears; a REFRESH (daemon already alive) preserves the
-# current session's buffered escalations.
+# UNIT 2: a FRESH entry preserves buffered escalations but clears the stale wedge
+# marker; a REFRESH (daemon already alive) preserves both.
 # ---------------------------------------------------------------------------
 unit_fresh_vs_refresh() {
   local st sleep_pid lock
   st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-refresh.XXXXXX")
   mkdir -p "$st/state"
-  : > "$st/state/.subsuper-escalations"
+  printf 'pending\n' > "$st/state/.subsuper-escalations"
+  printf '123\n' > "$st/state/.subsuper-escalations.since"
+  : > "$st/state/.subsuper-inject-wedged"
+  FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" bash -c '
+    . "$1"
+    FM_AFK_DAEMON=/bin/true
+    fm_afk_start_main
+  ' _ "$START" >/dev/null 2>&1
+  if [ "$(cat "$st/state/.subsuper-escalations")" = pending ] \
+     && [ "$(cat "$st/state/.subsuper-escalations.since")" = 123 ] \
+     && [ ! -e "$st/state/.subsuper-inject-wedged" ]; then
+    pass "fresh: pending delivery state survives while the stale wedge marker clears"
+  else
+    fail "fresh: discarded pending delivery state or retained the stale wedge marker"
+  fi
   : > "$st/state/.subsuper-inject-wedged"
   # A live "daemon": a real process whose identity the lock records, so
   # daemon_lock_held_by_live_daemon returns true (a refresh).
@@ -89,7 +104,9 @@ unit_fresh_vs_refresh() {
   printf '%s' "$sleep_pid" > "$lock/pid"
   ( . "$ROOT/bin/fm-wake-lib.sh"; fm_pid_identity "$sleep_pid" > "$lock/pid-identity" 2>/dev/null ) || true
   FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$START" >/dev/null 2>&1
-  if [ -e "$st/state/.subsuper-escalations" ] && [ -e "$st/state/.subsuper-inject-wedged" ]; then
+  if [ "$(cat "$st/state/.subsuper-escalations")" = pending ] \
+     && [ "$(cat "$st/state/.subsuper-escalations.since")" = 123 ] \
+     && [ -e "$st/state/.subsuper-inject-wedged" ]; then
     pass "refresh: daemon already alive - stale artifacts preserved (current session's buffer kept)"
   else
     fail "refresh: incorrectly cleared the current session's buffered escalations"
@@ -168,12 +185,14 @@ unit_failed_start_rolls_back_state() {
   st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-failed-start.XXXXXX")
   mkdir -p "$st/state"
   printf 'pending\n' > "$st/state/.subsuper-escalations"
+  printf '123\n' > "$st/state/.subsuper-escalations.since"
   printf 'wedged\n' > "$st/state/.subsuper-inject-wedged"
   if FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_SUPERVISOR_TARGET=unused \
     FM_SUPERVISOR_BACKEND=unsupported "$LAUNCH" start >/dev/null 2>&1; then
     fail "failed start: unsupported backend unexpectedly succeeded"
   elif [ ! -e "$st/state/.afk" ] \
     && [ "$(cat "$st/state/.subsuper-escalations")" = pending ] \
+    && [ "$(cat "$st/state/.subsuper-escalations.since")" = 123 ] \
     && [ "$(cat "$st/state/.subsuper-inject-wedged")" = wedged ]; then
     pass "failed start: away flag and delivery artifacts roll back"
   else
@@ -425,11 +444,15 @@ unit_native_lifecycle() {
   local st
   st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-native.XXXXXX")
   mkdir -p "$st/state"
-  : > "$st/state/.subsuper-escalations"
+  printf 'pending\n' > "$st/state/.subsuper-escalations"
+  printf '123\n' > "$st/state/.subsuper-escalations.since"
+  : > "$st/state/.subsuper-inject-wedged"
   if FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" start-native >/dev/null 2>&1 \
     && [ "$(cut -f1 "$st/state/.afk-daemon-terminal")" = none ] \
     && [ -e "$st/state/.afk" ] \
-    && [ ! -e "$st/state/.subsuper-escalations" ]; then
+    && [ "$(cat "$st/state/.subsuper-escalations")" = pending ] \
+    && [ "$(cat "$st/state/.subsuper-escalations.since")" = 123 ] \
+    && [ ! -e "$st/state/.subsuper-inject-wedged" ]; then
     pass "native lifecycle: launcher owns state with no terminal"
   else
     fail "native lifecycle: state preparation or no-terminal record failed"

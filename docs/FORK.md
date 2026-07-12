@@ -88,6 +88,20 @@ Fleet snapshots clear single-owner open decisions only after an explicit working
 - Files touched: `bin/fm-fleet-snapshot.sh` and `tests/fm-fleet-snapshot-view.test.sh`.
 - Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
 
+### Pending AFK delivery across daemon restarts
+
+Fresh away-mode entry preserves buffered escalations and their first-append sidecar while clearing only the stale wedge marker, and launcher rollback never overwrites pending delivery state.
+
+- Files touched: `.agents/skills/afk/SKILL.md`, `bin/fm-afk-launch.sh`, `bin/fm-afk-start.sh`, `docs/herdr-backend.md`, and `tests/fm-afk-launch.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
+### Configurable brief resolution verb
+
+Secondmate, scout, and ship briefs render the resolution verb configured through the classifier's canonical `FM_CLASSIFY_RESOLVE_VERB` override.
+
+- Files touched: `bin/fm-brief.sh` and `tests/fm-brief.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
 ### Pinned tasks-axi CI dependency
 
 Behavior-test CI installs the capability-verified `tasks-axi` 0.2.2 release instead of a floating package version.
