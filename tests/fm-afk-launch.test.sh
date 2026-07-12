@@ -462,6 +462,46 @@ unit_native_entry_preserves_prepared_state() {
   rm -rf "$st"
 }
 
+unit_detached_entries_preserve_launcher_environment() {
+  local st state config herdr_cmd tmux_cmd command
+  st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-detached-env.XXXXXX")
+  state="$st/custom-state"
+  config="$st/custom-config"
+  herdr_cmd="$st/herdr-command"
+  tmux_cmd="$st/tmux-command"
+  mkdir -p "$state" "$config"
+
+  FM_HOME="$st" FM_STATE_OVERRIDE="$state" FM_CONFIG_OVERRIDE="$config" \
+    FM_AFK_LAUNCH_ENTRY=/bin/true HERDR_CMD="$herdr_cmd" TMUX_CMD="$tmux_cmd" bash -c '
+    . "$1"
+    fm_backend_source() { return 0; }
+    fm_backend_herdr_server_ensure() { return 0; }
+    fm_backend_herdr_cli() {
+      if [ "$2 $3" = "workspace create" ]; then
+        printf %s '\''{"result":{"workspace":{"workspace_id":"ws-env"},"root_pane":{"pane_id":"pane-env"}}}'\''
+      elif [ "$2 $3" = "pane run" ]; then
+        printf "%s" "$5" > "$HERDR_CMD"
+      fi
+    }
+    fm_afk_launch_record_write() { return 0; }
+    fm_afk_launch_commit_terminal() { return 0; }
+    tmux() {
+      [ "$1" != new-session ] || printf "%s" "$5" > "$TMUX_CMD"
+    }
+    fm_afk_launch_create_herdr lab:captain herdr
+    fm_afk_launch_create_tmux captain tmux
+  ' _ "$LAUNCH"
+
+  for command in "$(cat "$herdr_cmd")" "$(cat "$tmux_cmd")"; do
+    case "$command" in *"FM_HOME=$st"*) ;; *) fail "detached entry lost the resolved home: $command" ;; esac
+    case "$command" in *"FM_STATE_OVERRIDE=$state"*) ;; *) fail "detached entry lost the resolved state override: $command" ;; esac
+    case "$command" in *"FM_CONFIG_OVERRIDE=$config"*) ;; *) fail "detached entry lost the resolved config override: $command" ;; esac
+    case "$command" in *"FM_AFK_STATE_PREPARED=1"*) ;; *) fail "detached entry lost launcher-prepared state: $command" ;; esac
+  done
+  pass "detached entries preserve prepared state and resolved overrides"
+  rm -rf "$st"
+}
+
 unit_close_failure_preserves_record() {
   local st
   st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-close-fail.XXXXXX")
@@ -877,6 +917,7 @@ unit_readiness_failure_preserves_unconfirmed_record
 unit_tmux_absence_distinguishes_probe_failure
 unit_native_lifecycle
 unit_native_entry_preserves_prepared_state
+unit_detached_entries_preserve_launcher_environment
 unit_close_failure_preserves_record
 unit_record_publication_atomic
 unit_malformed_record_fails_closed

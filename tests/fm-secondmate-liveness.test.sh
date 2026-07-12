@@ -238,12 +238,12 @@ new_world() {
   printf '%s\n' "$w"
 }
 
-# add_sm_home <w> <id> <window>: a plain (non-git) secondmate home - the
+# add_sm_home <w> <id> <window> [harness] [backend]: a plain (non-git) secondmate home - the
 # probe/respawn machinery under test never requires the home to be a real
 # worktree; a non-git home just makes the unrelated fast-forward sweep log a
 # harmless "not a git repo" skip.
 add_sm_home() {
-  local w=$1 id=$2 window=$3 harness=${4:-claude}
+  local w=$1 id=$2 window=$3 harness=${4:-claude} backend=${5:-}
   local home="$w/$id"
   mkdir -p "$home/bin" "$home/data" "$home/state" "$home/config" "$home/projects"
   printf '%s\n' "$id" > "$home/.fm-secondmate-home"
@@ -254,7 +254,25 @@ add_sm_home() {
     printf 'kind=secondmate\n'
     printf 'harness=%s\n' "$harness"
     printf 'home=%s\n' "$home"
+    if [ -n "$backend" ]; then printf 'backend=%s\n' "$backend"; fi
   } > "$w/home/state/$id.meta"
+}
+
+make_liveness_herdr() {
+  local dir=$1 fakebin
+  fakebin=$(fm_fakebin "$dir")
+  cat > "$fakebin/herdr" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "${FM_HERDR_CALL_LOG:-/dev/null}"
+case "${1:-} ${2:-}" in
+  "pane get") printf '{"result":{"pane":{"pane_id":"%s"}}}\n' "${3:-}"; exit 0 ;;
+  "agent get") printf '{"error":{"code":"agent_not_found"}}\n' >&2; exit 1 ;;
+esac
+exit 0
+SH
+  chmod +x "$fakebin/herdr"
+  printf '%s\n' "$fakebin"
 }
 
 run_bootstrap() {  # <fakebin> <home> <pane-cmd> <call-log> [extra env...] -> stdout
@@ -329,6 +347,27 @@ test_sweep_never_acts_on_unverified_harness_dead_reading() {
   pass "sweep: an unverified harness makes a dead-looking probe inconclusive"
 }
 
+test_sweep_herdr_no_agent_is_inconclusive_for_grok() {
+  local w fb log hlog out jqbin
+  command -v jq >/dev/null 2>&1 || { pass "sweep: herdr grok registration gate (skipped: jq not found)"; return 0; }
+  jqbin=$(dirname "$(command -v jq)")
+  w=$(new_world sweep-herdr-grok)
+  add_sm_home "$w" sm1 fmtest:p1 grok herdr
+  fb=$(make_toolchain "$w")
+  make_liveness_tmux "$w" >/dev/null
+  make_liveness_herdr "$w" >/dev/null
+  log="$w/calls.log"; : > "$log"
+  hlog="$w/herdr-calls.log"; : > "$hlog"
+
+  out=$(run_bootstrap "$fb:$jqbin" "$w/home" zsh "$log" FM_HERDR_CALL_LOG="$hlog")
+
+  assert_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1: skipped: liveness probe inconclusive (backend=herdr)" \
+    "herdr no-agent must be inconclusive when grok registration is unverified"
+  [ ! -s "$log" ] || fail "herdr no-agent for grok triggered kill or respawn: $(cat "$log")"
+  ! grep -qF 'pane close' "$hlog" || fail "herdr no-agent for grok closed a live pane: $(cat "$hlog")"
+  pass "sweep: herdr no-agent stays inconclusive for grok"
+}
+
 test_sweep_converges_no_retouch_once_alive() {
   local w fb tmuxfb log out1 out2
   w=$(new_world sweep-idempotent)
@@ -393,6 +432,7 @@ test_sweep_respawns_confirmed_dead_secondmate
 test_sweep_leaves_alive_secondmate_untouched
 test_sweep_never_acts_on_inconclusive_reading
 test_sweep_never_acts_on_unverified_harness_dead_reading
+test_sweep_herdr_no_agent_is_inconclusive_for_grok
 test_sweep_converges_no_retouch_once_alive
 test_sweep_skipped_under_detect_only
 test_sweep_noop_with_no_secondmate_meta

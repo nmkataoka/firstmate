@@ -421,9 +421,9 @@ test_watch_restart_rejects_reused_pid() {
   pass "watch restart refuses to signal a reused pid"
 }
 
-test_watch_restart_reports_healthy_peer_without_attaching() {
+test_watch_restart_never_reports_signaled_pid_healthy() {
   local dir state fakebin out peer identity armpid status
-  dir=$(make_case restart-healthy-peer)
+  dir=$(make_case restart-signaled-holder)
   state="$dir/state"
   fakebin="$dir/fakebin"
   out="$dir/restart.out"
@@ -436,17 +436,18 @@ test_watch_restart_reports_healthy_peer_without_attaching() {
   printf '%s\n' "$WATCH" > "$state/.watch.lock/watcher-path"
   printf '%s\n' "$identity" > "$state/.watch.lock/pid-identity"
   touch "$state/.last-watcher-beat"
-  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 FM_ARM_ATTACH_POLL=0.1 "$WATCH_ARM" --restart > "$out" &
+  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 FM_ARM_ATTACH_POLL=0.1 FM_ARM_CONFIRM_TIMEOUT=2 "$WATCH_ARM" --restart > "$out" &
   armpid=$!
-  wait_for_exit "$armpid" 80
+  wait_for_exit "$armpid" 150
   status=$?
-  [ "$status" -eq 0 ] || fail "restart did not exit zero after reporting healthy peer (status $status): $(cat "$out")"
-  grep -qF "watcher: healthy pid=$peer" "$out" || fail "restart did not report the healthy peer: $(cat "$out")"
+  [ "$status" -ne 0 ] || fail "restart reported success off the pid it just signaled: $(cat "$out")"
+  grep -qF 'watcher: FAILED' "$out" || fail "restart did not fail for the still-live signaled holder: $(cat "$out")"
+  ! grep -qF 'watcher: healthy' "$out" || fail "restart reported the just-signaled holder as healthy: $(cat "$out")"
   ! grep -qF 'watcher: attached' "$out" || fail "restart attached to a peer watcher instead of preserving restart ownership contract"
-  is_live_non_zombie "$peer" || fail "restart killed a TERM-resistant peer unexpectedly"
+  is_live_non_zombie "$peer" || fail "restart escalated beyond TERM on the signaled holder"
   kill -KILL "$peer" 2>/dev/null || true
   wait "$peer" 2>/dev/null || true
-  pass "watch restart reports a healthy peer without attaching to it"
+  pass "watch restart never reports its signaled pid healthy"
 }
 
 test_watcher_self_evicts_on_lock_takeover() {
@@ -717,7 +718,7 @@ test_lock_empty_pid_uses_minimum_grace
 test_lock_late_claim_loses_after_recreate
 test_lock_paused_mid_acquire_claim_fails_during_steal
 test_watch_restart_rejects_reused_pid
-test_watch_restart_reports_healthy_peer_without_attaching
+test_watch_restart_never_reports_signaled_pid_healthy
 test_watcher_self_evicts_on_lock_takeover
 test_arm_attaches_and_waits_for_live_fresh_watcher
 test_arm_starts_and_self_heals

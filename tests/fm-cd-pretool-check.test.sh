@@ -41,11 +41,13 @@ make_primary_fixture() {
   printf '%s\n' "$dir"
 }
 
-# Same shape as primary plus the .fm-secondmate-home marker: a secondmate's own
+# A linked worktree plus the .fm-secondmate-home marker: a secondmate's own
 # primary session, which the cd-guard DOES guard (unlike the turn-end guard).
 make_secondmate_fixture() {
-  local dir=$1
-  make_primary_fixture "$dir" >/dev/null
+  local dir=$1 base="${1}-base"
+  fm_git_worktree "$base" "$dir" fm/cd-guard-secondmate
+  : > "$dir/AGENTS.md"
+  install_cd_scripts "$dir"
   printf 'sm-cd-1\n' > "$dir/.fm-secondmate-home"
   printf '%s\n' "$dir"
 }

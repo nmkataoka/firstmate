@@ -124,21 +124,18 @@ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && 
 FM_ROOT=${FM_ROOT_OVERRIDE:-$(CDPATH='' cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)} || exit 0
 
 # Scope to the ACTUAL primary firstmate checkout. This reuses the turn-end
-# guard's primary detection (docs/turnend-guard.md): a plain, non-worktree
-# checkout has git-dir equal to git-common-dir, while a crewmate/scout task
-# worktree - the shape bin/fm-spawn.sh always hands out - is a linked git
-# worktree where the two differ. Unlike the turn-end guard, the cd-guard does
-# NOT exclude secondmate homes (the .fm-secondmate-home marker): a secondmate's
-# OWN primary session is a primary and must be guarded too; only its child
-# crew/scout worktrees are exempt, and they are exempt here by the same
-# linked-worktree test. Any failure to confirm the primary is inert (exit 0),
+# guard's primary detection (docs/turnend-guard.md): a plain primary checkout
+# has git-dir equal to git-common-dir, while a standard secondmate primary is a
+# linked worktree identified by .fm-secondmate-home. Crewmate/scout child
+# worktrees are linked worktrees without that marker and remain exempt. Any
+# failure to confirm the primary is inert (exit 0),
 # never a block, so a broken environment never denies a shell command.
 [ -f "$FM_ROOT/AGENTS.md" ] || exit 0
 [ -d "$FM_ROOT/bin" ] || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 GIT_DIR=$(git -C "$FM_ROOT" rev-parse --git-dir 2>/dev/null) || exit 0
 GIT_COMMON_DIR=$(git -C "$FM_ROOT" rev-parse --git-common-dir 2>/dev/null) || exit 0
-[ "$GIT_DIR" = "$GIT_COMMON_DIR" ] || exit 0
+[ "$GIT_DIR" = "$GIT_COMMON_DIR" ] || [ -f "$FM_ROOT/.fm-secondmate-home" ] || exit 0
 
 POLICY="$FM_ROOT/bin/fm-cd-command-policy.mjs"
 command -v node >/dev/null 2>&1 || exit 0

@@ -285,8 +285,10 @@ secondmate_liveness_sweep() {
     target=$(fm_backend_target_of_meta "$meta")
     [ -n "$target" ] || target="$window"
     verdict=$(fm_backend_agent_alive "$backend" "$target" 2>/dev/null) || verdict="unknown"
-    case "$harness" in
-      claude|codex|opencode|pi|grok) ;;
+    case "$backend:$harness" in
+      herdr:claude|herdr:codex) ;;
+      herdr:*) [ "$verdict" = dead ] && verdict=unknown ;;
+      *:claude|*:codex|*:opencode|*:pi|*:grok) ;;
       *) [ "$verdict" = dead ] && verdict=unknown ;;
     esac
     case "$verdict" in
