@@ -45,7 +45,7 @@
 #          1.31.2.
 #          curl, jq, tasks-axi, and quota-axi are required bootstrap tools
 #          (same class as lavish-axi). tasks-axi is also version and feature gated (0.1.1+
-#          with update --archive-body); an installed but incompatible build
+#          with update --archive-body and mv [<id>...]); an installed but incompatible build
 #          reports MISSING like no-mistakes. When
 #          config/backlog-backend is not manual and tasks-axi is compatible,
 #          bootstrap prints TASKS_AXI: available. quota-axi is required because
@@ -180,10 +180,11 @@ fleet_sync() {
 }
 
 secondmate_sync() {
-  # Local-HEAD secondmate sync: fast-forward every LIVE secondmate home's worktree
+  # Local-HEAD secondmate sync: fast-forward every LIVE secondmate home
   # to the primary checkout's current default-branch commit. Purely LOCAL - no
-  # fetch, no origin dependency: a secondmate home is a worktree of this same repo
-  # and already holds the primary's commit (fm-ff-lib.sh). Emits NUDGE_SECONDMATES:
+  # fetch, no origin dependency: a linked-worktree home already holds the primary's
+  # commit (fm-ff-lib.sh), while a standalone clone without it is skipped until
+  # /updatefirstmate refreshes it from origin. Emits NUDGE_SECONDMATES:
   # only for RUNNING secondmates whose instruction surface (AGENTS.md, bin/, or
   # .agents/skills/) actually changed, so a secondmate already on the primary's
   # version is never disturbed (AGENTS.md bootstrap + supervision). Mirrors
@@ -284,14 +285,6 @@ secondmate_liveness_sweep() {
     target=$(fm_backend_target_of_meta "$meta")
     [ -n "$target" ] || target="$window"
     verdict=$(fm_backend_agent_alive "$backend" "$target" 2>/dev/null) || verdict="unknown"
-    # A dead verdict is trusted only where the backend's classifier is
-    # verified for the harness. herdr's dead collapses in no-agent (a live
-    # pane whose `agent get` says agent_not_found), and herdr's native agent
-    # registration is empirically verified only for claude and codex
-    # (docs/herdr-backend.md) - a live agent herdr never registered would
-    # read no-agent, so acting on that would kill a live secondmate. Other
-    # backends keep the verified-harness gate calibrated to the tmux
-    # classifier, where dead means a bare shell.
     case "$backend:$harness" in
       herdr:claude|herdr:codex) ;;
       herdr:*) [ "$verdict" = dead ] && verdict=unknown ;;
@@ -320,7 +313,7 @@ secondmate_liveness_sweep() {
 
 install_cmd() {
   case "$1" in
-    tmux|node|gh|curl|jq|orca) echo "brew install $1  # or the platform's package manager" ;;
+    tmux|node|git|gh|curl|jq|orca) echo "brew install $1  # or the platform's package manager" ;;
     treehouse) echo "curl -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh" ;;
     no-mistakes) echo "curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh" ;;
     gh-axi|chrome-devtools-axi|lavish-axi) echo "npm install -g $1 && $1 setup hooks" ;;
@@ -331,8 +324,8 @@ install_cmd() {
 
 BACKEND=$(fm_backend_name)
 case "$BACKEND" in
-  orca) TOOLS="orca node gh curl jq no-mistakes gh-axi chrome-devtools-axi lavish-axi tasks-axi quota-axi" ;;
-  *) TOOLS="tmux node gh curl jq treehouse no-mistakes gh-axi chrome-devtools-axi lavish-axi tasks-axi quota-axi" ;;
+  orca) TOOLS="orca node git gh curl jq no-mistakes gh-axi chrome-devtools-axi lavish-axi tasks-axi quota-axi" ;;
+  *) TOOLS="tmux node git gh curl jq treehouse no-mistakes gh-axi chrome-devtools-axi lavish-axi tasks-axi quota-axi" ;;
 esac
 NO_MISTAKES_MIN_MAJOR=1
 NO_MISTAKES_MIN_MINOR=31

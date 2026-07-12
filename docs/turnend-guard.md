@@ -3,7 +3,7 @@
 This is the authoritative contract for the "no turn ends blind" primary guard referenced from AGENTS.md section 8.
 The shared predicate lives in `bin/fm-turnend-guard.sh`.
 Harness-specific tracked hook files only adapt each verified harness's real turn-end mechanism to that shared predicate.
-A related but separate guard, the pre-arm PreToolUse seatbelt (`bin/fm-arm-pretool-check.sh`, `docs/arm-pretool-check.md`), denies a bad watcher-arm command shape before it runs rather than detecting a blind turn end afterward.
+Two related but separate PreToolUse seatbelts deny a bad command shape before it runs rather than detecting a blind turn end afterward: the watcher-arm seatbelt (`bin/fm-arm-pretool-check.sh`, `docs/arm-pretool-check.md`) and the cd-guard (`bin/fm-cd-pretool-check.sh`, `docs/cd-guard.md`), which reuses this guard's linked-worktree exemption but deliberately remains active in secondmate homes.
 
 ## Gap Closed
 
@@ -20,7 +20,6 @@ The guard first scopes itself to the real primary checkout.
 It is inert in secondmate homes because `.fm-secondmate-home` exists there.
 It is inert in crewmate and scout worktrees because firstmate provisions them as linked git worktrees, where `git rev-parse --git-dir` differs from `git rev-parse --git-common-dir`.
 It also requires `AGENTS.md`, `bin/`, and the effective state directory to exist.
-The pre-arm seatbelt scopes its denies with this same primary-checkout predicate, minus the state-directory requirement (`docs/arm-pretool-check.md` "Primary-checkout scoping"), so keep the two in sync when changing it.
 
 For an in-scope primary checkout, it counts in-flight work from `state/*.meta`.
 If no task is in flight, it exits silently.
@@ -111,7 +110,7 @@ If Grok declines to load project hooks, this primary guard fails open and `fm-gu
 
 **2026-07-09 update:** grok 0.2.93 broke the `.grok/hooks/fm-primary-turnend-guard.json` Stop hook with `hook not executed: required env var(s) not set: ${root}`, because grok's own `${VAR}` expansion over the raw `command` string does not tolerate a bare local variable assigned earlier in the same `bash -lc` script.
 The hook command was fixed to reference `${GROK_WORKSPACE_ROOT:-}` directly everywhere instead of assigning it to `$root` first, and re-validated against grok 0.2.93 to fire and complete cleanly.
-See `docs/arm-pretool-check.md`'s "Grok `${VAR}` regression" section for the full root cause, the fix, and the re-validation evidence; that document's Grok hook shares the same fix.
+See `docs/arm-pretool-check.md`'s "Harness wiring" section for the same Grok expansion requirement; that document's Grok hook shares the same fix.
 
 ## Tests
 

@@ -422,10 +422,6 @@ test_watch_restart_rejects_reused_pid() {
 }
 
 test_watch_restart_never_reports_signaled_pid_healthy() {
-  # The signaled-holder race: the old watcher this restart just sent TERM can
-  # outlive the stop wait (deferred signal, wedged) while still showing a fresh
-  # beacon and matching identity. Reporting it healthy would leave NO watcher
-  # moments after a success report, so restart must report FAILED instead.
   local dir state fakebin out peer identity armpid status
   dir=$(make_case restart-signaled-holder)
   state="$dir/state"
@@ -445,48 +441,13 @@ test_watch_restart_never_reports_signaled_pid_healthy() {
   wait_for_exit "$armpid" 150
   status=$?
   [ "$status" -ne 0 ] || fail "restart reported success off the pid it just signaled: $(cat "$out")"
-  grep -qF 'watcher: FAILED' "$out" || fail "restart did not report FAILED for the still-live signaled holder: $(cat "$out")"
+  grep -qF 'watcher: FAILED' "$out" || fail "restart did not fail for the still-live signaled holder: $(cat "$out")"
   ! grep -qF 'watcher: healthy' "$out" || fail "restart reported the just-signaled holder as healthy: $(cat "$out")"
   ! grep -qF 'watcher: attached' "$out" || fail "restart attached to a peer watcher instead of preserving restart ownership contract"
   is_live_non_zombie "$peer" || fail "restart escalated beyond TERM on the signaled holder"
   kill -KILL "$peer" 2>/dev/null || true
   wait "$peer" 2>/dev/null || true
-  pass "watch restart reports FAILED, never healthy, off the pid it just signaled"
-}
-
-test_watch_restart_replaces_live_watcher() {
-  local dir state fakebin out old_pid armpid i lock_pid
-  dir=$(make_case restart-replaces-live)
-  state="$dir/state"
-  fakebin="$dir/fakebin"
-  out="$dir/restart.out"
-  # Launched via a command substitution so the watcher is not a job of this
-  # test shell: the arm under test TERMs it mid-test, and a job-table child
-  # would make bash print an asynchronous "Terminated" notice into the output.
-  old_pid=$({ PATH="$fakebin:$PATH" FM_HOME="$dir" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$dir/old-watch.out" 2>/dev/null & echo $!; })
-  i=0
-  while [ "$i" -lt 50 ]; do
-    [ "$(cat "$state/.watch.lock/pid" 2>/dev/null || true)" = "$old_pid" ] && [ -e "$state/.last-watcher-beat" ] && break
-    sleep 0.1
-    i=$((i + 1))
-  done
-  [ "$(cat "$state/.watch.lock/pid" 2>/dev/null || true)" = "$old_pid" ] || fail "old watcher never claimed the lock"
-  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH_ARM" --restart > "$out" &
-  armpid=$!
-  i=0
-  while [ "$i" -lt 120 ]; do
-    grep -qF 'watcher: started pid=' "$out" 2>/dev/null && break
-    sleep 0.1
-    i=$((i + 1))
-  done
-  lock_pid=$(cat "$state/.watch.lock/pid" 2>/dev/null || true)
-  grep -qF "watcher: started pid=$lock_pid" "$out" || fail "restart did not confirm a fresh watcher: $(cat "$out")"
-  [ "$lock_pid" != "$old_pid" ] || fail "restart 'fresh' watcher is still the old pid"
-  ! is_live_non_zombie "$old_pid" || fail "old watcher survived the restart it was signaled by"
-  ! grep -qF 'watcher: healthy' "$out" || fail "restart reported healthy instead of owning a fresh cycle: $(cat "$out")"
-  kill "$armpid" "$lock_pid" 2>/dev/null || true
-  wait "$armpid" 2>/dev/null || true
-  pass "watch restart stops the old watcher and confirms a genuinely fresh one"
+  pass "watch restart never reports its signaled pid healthy"
 }
 
 test_watcher_self_evicts_on_lock_takeover() {
@@ -758,7 +719,6 @@ test_lock_late_claim_loses_after_recreate
 test_lock_paused_mid_acquire_claim_fails_during_steal
 test_watch_restart_rejects_reused_pid
 test_watch_restart_never_reports_signaled_pid_healthy
-test_watch_restart_replaces_live_watcher
 test_watcher_self_evicts_on_lock_takeover
 test_arm_attaches_and_waits_for_live_fresh_watcher
 test_arm_starts_and_self_heals

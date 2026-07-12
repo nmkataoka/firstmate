@@ -238,10 +238,10 @@ new_world() {
   printf '%s\n' "$w"
 }
 
-# add_sm_home <w> <id> <window> [harness] [backend]: a plain (non-git)
-# secondmate home - the probe/respawn machinery under test never requires the
-# home to be a real worktree; a non-git home just makes the unrelated
-# fast-forward sweep log a harmless "not a git repo" skip.
+# add_sm_home <w> <id> <window> [harness] [backend]: a plain (non-git) secondmate home - the
+# probe/respawn machinery under test never requires the home to be a real
+# worktree; a non-git home just makes the unrelated fast-forward sweep log a
+# harmless "not a git repo" skip.
 add_sm_home() {
   local w=$1 id=$2 window=$3 harness=${4:-claude} backend=${5:-}
   local home="$w/$id"
@@ -258,11 +258,6 @@ add_sm_home() {
   } > "$w/home/state/$id.meta"
 }
 
-# make_liveness_herdr <dir>: a herdr stub answering the liveness probe's two
-# read-only calls with the no-agent shape (the pane structurally exists, but
-# `agent get` reports agent_not_found - what an unregistered live agent reads
-# as), logging every invocation to $FM_HERDR_CALL_LOG when set. The error
-# body goes to stderr with exit 1, matching real herdr 0.7.1.
 make_liveness_herdr() {
   local dir=$1 fakebin
   fakebin=$(fm_fakebin "$dir")
@@ -352,47 +347,25 @@ test_sweep_never_acts_on_unverified_harness_dead_reading() {
   pass "sweep: an unverified harness makes a dead-looking probe inconclusive"
 }
 
-test_sweep_herdr_no_agent_inconclusive_for_unverified_registration() {
-  # herdr's dead verdict collapses in no-agent (agent_not_found on a live
-  # pane), and herdr's native agent registration is verified only for claude
-  # and codex (docs/herdr-backend.md) - a live agent herdr never registered
-  # reads no-agent, so for any other harness the sweep must treat that dead
-  # reading as inconclusive rather than kill a live secondmate.
-  local w fb herdrfb log hlog out jqbin
-  command -v jq >/dev/null 2>&1 || { pass "sweep: herdr unverified-registration gate (skipped: jq not found)"; return 0; }
+test_sweep_herdr_no_agent_is_inconclusive_for_grok() {
+  local w fb log hlog out jqbin
+  command -v jq >/dev/null 2>&1 || { pass "sweep: herdr grok registration gate (skipped: jq not found)"; return 0; }
   jqbin=$(dirname "$(command -v jq)")
-  w=$(new_world sweep-herdr-unverified)
+  w=$(new_world sweep-herdr-grok)
   add_sm_home "$w" sm1 fmtest:p1 grok herdr
-  fb=$(make_toolchain "$w"); make_liveness_tmux "$w" >/dev/null; herdrfb=$(make_liveness_herdr "$w")
+  fb=$(make_toolchain "$w")
+  make_liveness_tmux "$w" >/dev/null
+  make_liveness_herdr "$w" >/dev/null
   log="$w/calls.log"; : > "$log"
   hlog="$w/herdr-calls.log"; : > "$hlog"
 
-  out=$(run_bootstrap "$herdrfb:$fb:$jqbin" "$w/home" zsh "$log" FM_HERDR_CALL_LOG="$hlog")
+  out=$(run_bootstrap "$fb:$jqbin" "$w/home" zsh "$log" FM_HERDR_CALL_LOG="$hlog")
 
   assert_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1: skipped: liveness probe inconclusive (backend=herdr)" \
-    "a herdr no-agent reading for a harness without verified agent registration must be inconclusive"
-  [ ! -s "$log" ] || fail "an unverified-registration herdr reading must never trigger a kill or respawn: $(cat "$log")"
-  ! grep -qF 'pane close' "$hlog" || fail "an unverified-registration herdr reading must never close the pane: $(cat "$hlog")"
-  pass "sweep: herdr no-agent stays inconclusive for a harness herdr is not verified to register"
-}
-
-test_sweep_herdr_no_agent_confidently_dead_for_verified_registration() {
-  local w fb herdrfb log hlog out jqbin
-  command -v jq >/dev/null 2>&1 || { pass "sweep: herdr verified-registration gate (skipped: jq not found)"; return 0; }
-  jqbin=$(dirname "$(command -v jq)")
-  w=$(new_world sweep-herdr-verified)
-  add_sm_home "$w" sm1 fmtest:p1 claude herdr
-  fb=$(make_toolchain "$w"); make_liveness_tmux "$w" >/dev/null; herdrfb=$(make_liveness_herdr "$w")
-  log="$w/calls.log"; : > "$log"
-  hlog="$w/herdr-calls.log"; : > "$hlog"
-
-  out=$(run_bootstrap "$herdrfb:$fb:$jqbin" "$w/home" zsh "$log" FM_HERDR_CALL_LOG="$hlog")
-
-  assert_contains "$out" "SECONDMATE_LIVENESS: secondmate sm1: respawned" \
-    "a herdr no-agent reading for a verified-registration harness (claude) should still respawn"
-  assert_contains "$(cat "$log")" "new-window" \
-    "a confidently-dead herdr secondmate should actually be relaunched"
-  pass "sweep: herdr no-agent stays confidently dead for claude/codex, whose registration is verified"
+    "herdr no-agent must be inconclusive when grok registration is unverified"
+  [ ! -s "$log" ] || fail "herdr no-agent for grok triggered kill or respawn: $(cat "$log")"
+  ! grep -qF 'pane close' "$hlog" || fail "herdr no-agent for grok closed a live pane: $(cat "$hlog")"
+  pass "sweep: herdr no-agent stays inconclusive for grok"
 }
 
 test_sweep_converges_no_retouch_once_alive() {
@@ -459,8 +432,7 @@ test_sweep_respawns_confirmed_dead_secondmate
 test_sweep_leaves_alive_secondmate_untouched
 test_sweep_never_acts_on_inconclusive_reading
 test_sweep_never_acts_on_unverified_harness_dead_reading
-test_sweep_herdr_no_agent_inconclusive_for_unverified_registration
-test_sweep_herdr_no_agent_confidently_dead_for_verified_registration
+test_sweep_herdr_no_agent_is_inconclusive_for_grok
 test_sweep_converges_no_retouch_once_alive
 test_sweep_skipped_under_detect_only
 test_sweep_noop_with_no_secondmate_meta

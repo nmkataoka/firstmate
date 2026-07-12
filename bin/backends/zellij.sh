@@ -101,9 +101,8 @@
 #     `close-tab-by-id`, which verified cleanly removes a live tab (pane and
 #     all) in one call - never a separate close-pane first.
 #
-# Requires: zellij (CLI), jq (JSON parsing). zellij is gated behind selecting
-# this backend; jq is part of bin/fm-bootstrap.sh's universal tool list and is
-# rechecked here.
+# Requires: zellij (CLI), jq (JSON parsing). Both are gated behind selecting
+# this backend; bin/fm-bootstrap.sh's core tool list is unaffected.
 
 # FM_HOME fallback: every real caller already sets FM_HOME as a global before
 # sourcing fm-backend.sh (which sources this file); this exists only so this

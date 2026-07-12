@@ -72,10 +72,6 @@ test_spawn_template_mentions_pi_watch_placeholder() {
 
 test_pi_extension_reports_external_healthy_watcher() {
   local repo home plugin out status
-  if ! fm_node_can_import_ts; then
-    echo "skip: node cannot import the .ts Pi extension (type stripping unavailable)"
-    return 0
-  fi
   repo="$TMP_ROOT/pi-external-healthy-root"
   home="$TMP_ROOT/pi-external-healthy-home"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
@@ -150,10 +146,6 @@ EOF
 
 test_pi_tool_returns_agent_tool_result() {
   local repo home plugin out status
-  if ! fm_node_can_import_ts; then
-    echo "skip: node cannot import the .ts Pi extension (type stripping unavailable)"
-    return 0
-  fi
   repo="$TMP_ROOT/pi-tool-result-root"
   home="$TMP_ROOT/pi-tool-result-home"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
@@ -203,10 +195,6 @@ EOF
 
 test_pi_process_exit_cleanup_listener_lifecycle() {
   local repo home plugin out status
-  if ! fm_node_can_import_ts; then
-    echo "skip: node cannot import the .ts Pi extension (type stripping unavailable)"
-    return 0
-  fi
   repo="$TMP_ROOT/pi-exit-listener-root"
   home="$TMP_ROOT/pi-exit-listener-home"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
@@ -246,10 +234,6 @@ EOF
 
 test_pi_process_exit_cleanup_stops_arm_child() {
   local repo home plugin cleanup_log pid_file out status pid i
-  if ! fm_node_can_import_ts; then
-    echo "skip: node cannot import the .ts Pi extension (type stripping unavailable)"
-    return 0
-  fi
   repo="$TMP_ROOT/pi-process-exit-root"
   home="$TMP_ROOT/pi-process-exit-home"
   cleanup_log="$TMP_ROOT/pi-process-exit-cleaned"
