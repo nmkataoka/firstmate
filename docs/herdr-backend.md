@@ -4,7 +4,7 @@ This document records the empirical verification behind `bin/backends/herdr.sh`,
 It is the herdr equivalent of the tmux facts recorded in the `harness-adapters` skill and `docs/architecture.md`'s "Runtime session backends" section.
 
 Herdr is [an agent-native terminal multiplexer](https://herdr.dev) with a socket API, CLI wrappers, and native per-pane agent-state detection.
-Verified against the real installed binary: herdr 0.7.1, protocol 14, macOS aarch64.
+The baseline adapter was verified against herdr 0.7.1, protocol 14, on macOS aarch64; the native event and away-mode terminal paths below were verified against herdr 0.7.3, protocol 16.
 Current real-herdr verification uses isolated `HERDR_SESSION` names plus the guarded teardown helper in `tests/herdr-test-safety.sh`.
 A 2026-07-02 cleanup bug proved that `HERDR_SESSION` alone is not a safe way to target destructive session cleanup; see "Session targeting: the `--session` flag, not `HERDR_SESSION` alone" below.
 All real-herdr verification in this document uses isolated sessions and guarded cleanup; the captain's default herdr session and live tmux fleet were never intended targets.
@@ -20,6 +20,7 @@ Prerequisites:
 
 - `herdr` itself, protocol 14 or newer (installed 0.7.1 verified) - see [herdr.dev](https://herdr.dev) for install instructions.
 - `jq`, required to parse herdr's JSON output and covered by universal bootstrap detection.
+- Python 3 is optional for the backend as a whole but required for the native blocked-transition event fast path; without it, supervision keeps the permanent polling fallback.
 - The universal firstmate prerequisites - a verified crew harness plus the required toolchain, owned by [`docs/configuration.md`](configuration.md) ("Harness support", "Toolchain"); treehouse still provides the worktree, herdr only provides the session.
 
 Select herdr by putting `herdr` in a local `config/backend` file - the durable way to pick it - or by exporting `FM_BACKEND=herdr` when you launch your harness for a one-off session; telling the first mate in chat to use herdr also works.
@@ -323,7 +324,8 @@ The `dead` branch remains a conservative, defensively-coded path for a herdr fai
 `bin/fm-bootstrap.sh`'s session-start secondmate-liveness sweep needs the same underlying question the husk check above already answers with confidence: is this pane's agent actually alive, or is it a bare shell / gone pane pretending to be a live endpoint?
 Rather than add a second herdr classifier, `fm_backend_herdr_agent_alive` (`bin/backends/herdr.sh`) is a thin wrapper around the already-verified `fm_backend_herdr_pane_agent_state`: `dead` and `no-agent` both collapse to the sweep's `dead` verdict (a structurally-gone pane and a restored, agent-less bare shell are equally not a live secondmate - the exact shape a dead secondmate leaves behind), `live` maps to `alive`, and `unknown` stays `unknown`.
 No new empirical verification was needed for the mapping itself - `fm_backend_herdr_pane_agent_state`'s four states are already verified above (both at the unit level and, for `no-agent`, against the real binary via the respawn-idempotency e2e test); this wrapper only renames them for the generic `fm_backend_agent_alive` dispatcher (`bin/fm-backend.sh`) that also serves the tmux adapter (`docs/tmux-backend.md` "Agent liveness probe").
-Unlike tmux's probe, herdr's has no equivalent "which harness is running under a generic interpreter name" ambiguity: the classification comes from herdr's own registered-agent state, not a process name, so herdr correctly resolves every verified harness including `pi` (the one tmux cannot confidently classify - see `docs/tmux-backend.md` "Known gap").
+The raw Herdr probe classifies registered agent state rather than a process name, but not every verified harness reliably registers with Herdr.
+Bootstrap therefore accepts a Herdr `dead` verdict as conclusive only for Claude and Codex; for Grok, OpenCode, or Pi it demotes `dead` to `unknown` and skips automatic respawn rather than risk a duplicate secondmate.
 
 ## End-to-end verification (spawn -> steer -> peek -> done -> merge -> teardown)
 
@@ -655,7 +657,7 @@ There is no second watcher process: the reader is a short-lived subprocess of th
 
 **Polling is the permanent fail-closed backstop.**
 The watcher's poll loop runs every cycle regardless, so the event path only ever shortens latency and can never drop an escalation.
-Three documented triggers fall back to pure polling (`fm_backend_herdr_events_capable` and the watcher's runtime-disable counter): a build below protocol 16 or missing the events surface in `herdr api schema`; a connect/subscribe failure; and repeated runtime failures, which disable the fast path for the rest of that watcher process (a restart re-probes).
+Four documented triggers fall back to pure polling (`fm_backend_herdr_events_capable` and the watcher's runtime-disable counter): a build below protocol 16 or missing the events surface in `herdr api schema`; a missing Python 3 reader; a connect/subscribe failure; and repeated runtime failures, which disable the fast path for the rest of that watcher process (a restart re-probes).
 
 **Empirical evidence (2026-07-11, herdr 0.7.3, protocol 16, macOS aarch64 Darwin 25.5.0, python3 3.13, jq present).**
 Capability, verified read-only:
@@ -683,7 +685,7 @@ ok - real herdr: the watcher fast-path enqueues a stale wake naming the task win
 ```
 
 The subscriber returned the `blocked` transition in **0.129s** and the watcher fast-path enqueued a durable `stale` wake naming the task window - versus up to `FM_POLL` (15s) plus `FM_STALE_ESCALATE_SECS` (240s) on the poll path this shortcuts.
-Dedupe (one wake per `->blocked` edge, marker cleared when the pane returns to `working`), subscribe-then-reconcile ordering (an already-blocked pane enqueued exactly once while newer edges buffer in the active stream), the `kind=secondmate`/`paused:` exemptions, and the three fail-closed fallbacks are covered by the fake-CLI unit tests in `tests/fm-backend-herdr.test.sh` (the `wait_transition`/`apply_transition` cases), `tests/fm-transition-lib.test.sh`, and `tests/fm-supervision-events.test.sh`.
+Dedupe (one wake per `->blocked` edge, marker cleared when the pane returns to `working`), subscribe-then-reconcile ordering (an already-blocked pane enqueued exactly once while newer edges buffer in the active stream), the `kind=secondmate`/`paused:` exemptions, and the four fail-closed fallbacks are covered by the fake-CLI unit tests in `tests/fm-backend-herdr.test.sh` (the `wait_transition`/`apply_transition` cases), `tests/fm-transition-lib.test.sh`, and `tests/fm-supervision-events.test.sh`.
 
 ## Away-mode daemon terminal launch (2026-07-12, herdr 0.7.3, protocol 16, macOS aarch64)
 

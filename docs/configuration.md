@@ -36,6 +36,7 @@ Any value other than `tmux`, `herdr`, `zellij`, `orca`, or `cmux` is rejected un
 `codex-app` is not an accepted runtime backend yet; [`docs/codex-app-backend.md`](codex-app-backend.md) owns the Codex App boundary.
 The session-start secondmate liveness sweep uses a deeper `fm_backend_agent_alive` probe where verified.
 Today that probe can classify tmux and herdr secondmate endpoints as `alive`, `dead`, or `unknown`; zellij, Orca, and cmux report `unknown` until their own agent-process classifiers are verified.
+For Herdr, bootstrap treats a `dead` verdict as conclusive only for Claude and Codex, whose processes Herdr registers reliably; it demotes that verdict to `unknown` for Grok, OpenCode, and Pi rather than risk launching a duplicate secondmate.
 A herdr spawn additionally version-gates against the installed `herdr` binary's protocol and requires `jq`, refusing loudly on an incompatible or missing installation.
 A zellij spawn additionally version-gates against the installed `zellij` binary's version and requires `jq`, refusing loudly when either is missing or the version is older than 0.44.
 A cmux spawn additionally version-gates against the installed `cmux` binary's version, requires `jq`, and requires the control socket to be reachable and accessible (see [`docs/cmux-backend.md`](cmux-backend.md) "Setup" for the one-time socket-access configuration this needs; Automation mode is the recommended socket control mode, with Password mode supported via `config/cmux-socket-password`), refusing loudly and non-retryably on a `cmuxOnly`/unauthenticated socket.
@@ -328,6 +329,19 @@ FM_BACKEND_CMUX_COMPOSER_LINES=20  # cmux-only: tail lines scanned to locate the
 FM_BACKEND_CMUX_IDLE_RE='^Type a message\.\.\.$'  # cmux-only: empty-composer placeholder regex after border/prompt stripping
 CMUX_SOCKET_PASSWORD=   # cmux-only: socket password fallback when config/cmux-socket-password is absent (docs/cmux-backend.md)
 FM_SESSION_START_STATUS_TAIL=5   # state/*.status lines printed per task in the session-start digest
+FM_SNAPSHOT_SECONDMATE_LANDED_PER_HOME=10   # per-home Done cap in the canonical fleet snapshot; 0 removes the cap
+FM_BEARINGS_LANDED=6             # overall landed-record cap in the compact bearings projection
+FM_BEARINGS_LANDED_PER_HOME=6    # per-home landed-record cap; defaults to FM_BEARINGS_LANDED
+FM_BEARINGS_IN_FLIGHT=20         # in-flight record cap in the compact bearings projection
+FM_BEARINGS_DECISIONS=20         # open-decision cap in the compact bearings projection
+FM_BEARINGS_GATES=20             # queued-gate cap in the compact bearings projection
+FM_BEARINGS_REPORTS=20           # scout-report cap in the compact bearings projection
+FM_BEARINGS_RECORDED_PRS=20      # locally recorded PR cap in the compact bearings projection
+FM_BEARINGS_UNHEALTHY=20         # unhealthy-endpoint cap in the compact bearings projection
+FM_BEARINGS_PR_REPOS=10          # repository-query cap when bearings uses --include-prs
+FM_BEARINGS_PR_LIMIT=20          # per-repository open-PR cap when bearings uses --include-prs
+FM_BEARINGS_PR_TIMEOUT=20        # positive timeout in seconds for each bearings GitHub query
+FM_BEARINGS_NOW=                 # test/debug UTC timestamp override for bearings date gating
 FM_BOOTSTRAP_DETECT_ONLY=0   # internal/read-only session-start mode: skip bootstrap's mutating sweeps and print advisory TANGLE wording
 FM_GUARD_READ_ONLY=0    # internal/read-only guard mode: keep alarms but suppress drain, supervision repair, and checkout repair commands
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the guarded operation WILL still run.'   # banner continuation line; fm-send.sh overrides it to name the requested message specifically
@@ -358,10 +372,12 @@ FM_WATCHER_STALE_GRACE=300   # defaults to FM_GUARD_GRACE; seconds a live watche
 FM_SIGNAL_GRACE=30      # seconds to coalesce nearby status and turn-end signals into one wake
 FM_CAPTAIN_RE='done:|needs-decision:|blocked:|failed:|PR ready|checks green|ready in branch|merged'   # status regex that makes watcher and daemon signal/stale/scan output captain-relevant
 FM_CLASSIFY_PAUSED_VERB=paused     # leading status verb for a declared external wait; excluded from FM_CAPTAIN_RE and distinct from blocked
+FM_CLASSIFY_RESOLVE_VERB=resolved  # leading status verb that closes a bare or matching [key=<slug>] needs-decision/blocked event
 FM_STALE_ESCALATE_SECS=240         # idle seconds before a provably-working stale pane escalates; stale panes whose crew is not provably working surface immediately unless they declare the pause verb
 FM_PAUSE_RESURFACE_SECS=3600       # seconds before an idle declared external wait re-surfaces for a recheck in the watcher or away-mode daemon
 FM_WEDGE_DEMAND_INSPECT_COUNT=3    # consecutive provably-working stale escalations on the same unchanged pane before demand-deep-inspection is added
 FM_WATCH_TRIAGE_LOG_MAX_BYTES=262144   # size cap for the watcher's absorbed-wake debug log
+FM_EVENT_CAP_FAIL_MAX=3     # Herdr event-reader runtime failures before this watcher process disables the push fast path and keeps polling
 FM_FLEET_SYNC_BOOTSTRAP_TIMEOUT=     # optional seconds allowed for bootstrap's best-effort clone refresh; unset/blank defaults to max(20, 5 + 3 * origin-backed-project-count)
 FM_FLEET_PRUNE=1        # set to 0 to skip pruning local branches whose upstream is gone
 FM_STALE_WORKTREE_LOCK_AGE_SECS=30       # min mtime age before fm-teardown.sh treats a leftover worktree git index.lock as provably stale
