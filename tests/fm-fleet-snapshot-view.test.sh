@@ -17,6 +17,9 @@ make_fakebin() {  # <dir>
   fb=$(fm_fakebin "$1")
   cat > "$fb/no-mistakes" <<'SH'
 #!/usr/bin/env bash
+case "${1:-}:${2:-}" in
+  axi:status) printf '%s\n' "${FM_FAKE_AXI_STATUS:-}" ;;
+esac
 exit 0
 SH
   cat > "$fb/tmux" <<'SH'
@@ -552,6 +555,40 @@ test_parked_scout_decision_stays_pending() {
   pass "a scout still parked at a decision stays pending (terminal clear does not over-fire)"
 }
 
+test_unknown_run_step_preserves_open_decision() {
+  local home fakebin out run_status
+  home=$(make_home unknown-run-step)
+  fm_git_init_commit "$home/projects/unknown-run-step"
+  git -C "$home/projects/unknown-run-step" checkout -qb fm/unknown-run-step
+  fm_write_meta "$home/state/unknown-run-step.meta" \
+    "window=firstmate:fm-unknown-run-step" \
+    "worktree=$home/projects/unknown-run-step" \
+    "project=firstmate" \
+    "harness=codex" \
+    "kind=ship" \
+    "mode=ship"
+  printf 'needs-decision [key=q1]: choose an API shape\n' > "$home/state/unknown-run-step.status"
+  run_status=$(cat <<'EOF'
+run:
+  id: "01UNKNOWN"
+  branch: fm/unknown-run-step
+  status: completed
+outcome: inconclusive
+EOF
+)
+  fakebin=$(make_fakebin "$home")
+  out=$(FM_FAKE_AXI_STATUS="$run_status" PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --json)
+  printf '%s' "$out" | jq -e '
+    .tasks[] | select(.id == "unknown-run-step")
+    | .current_state.state == "unknown"
+      and .current_state.source == "run-step"
+      and .hints.pending_decision == true
+      and (.hints.open_decisions | length) == 1
+      and .hints.open_decisions[0].key == "q1"
+  ' >/dev/null || fail "an inconclusive run-step must preserve an open decision: $out"
+  pass "an unknown run-step preserves an open decision"
+}
+
 test_empty_fleet_json
 test_fixture_snapshot_json
 test_event_hints_follow_reconciled_current_state
@@ -560,6 +597,7 @@ test_secondmate_open_decision_survives_live_endpoint
 test_open_decision_clears_on_keyed_resolution
 test_completed_scout_report_is_pointer_not_pending
 test_parked_scout_decision_stays_pending
+test_unknown_run_step_preserves_open_decision
 test_scout_reports_include_teardown_reports
 test_backlog_tasks_axi_forms_and_overrides
 test_view_renders_snapshot

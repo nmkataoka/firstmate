@@ -80,6 +80,12 @@ test_ci_installs_and_logs_the_pinned_version() {
   pass "CI installs and logs the pinned ShellCheck version from the one owner"
 }
 
+test_ci_pins_tasks_axi_version() {
+  grep -Fqx '          npm install -g tasks-axi@0.2.2' "$CI" \
+    || fail "CI must install the capability-verified tasks-axi 0.2.2 release"
+  pass "CI pins the tasks-axi release used by behavior tests"
+}
+
 test_rejects_wrong_shellcheck_version() {
   # Version-independent: a fake shellcheck reporting a different version must be
   # refused before any lint, proving local and CI cannot silently diverge.
@@ -186,6 +192,7 @@ test_ci_invokes_the_owner
 test_nomistakes_invokes_the_owner
 test_pins_an_explicit_version
 test_ci_installs_and_logs_the_pinned_version
+test_ci_pins_tasks_axi_version
 test_rejects_wrong_shellcheck_version
 test_catches_a_real_lint_defect
 test_ignores_ambient_shellcheck_opts

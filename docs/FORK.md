@@ -81,6 +81,20 @@ The watcher and away daemon classify the authoritative keyed-decision fold, reta
 - Files touched: `bin/fm-classify-lib.sh`, `bin/fm-supervise-daemon.sh`, `bin/fm-watch.sh`, `tests/fm-daemon.test.sh`, and `tests/fm-watch-triage.test.sh`.
 - Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
 
+### Conclusive snapshot decision clearing
+
+Fleet snapshots clear single-owner open decisions only after an explicit working, done, or failed lifecycle state, so an inconclusive run-step cannot hide a captain decision.
+
+- Files touched: `bin/fm-fleet-snapshot.sh` and `tests/fm-fleet-snapshot-view.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
+### Pinned tasks-axi CI dependency
+
+Behavior-test CI installs the capability-verified `tasks-axi` 0.2.2 release instead of a floating package version.
+
+- Files touched: `.github/workflows/ci.yml` and `tests/fm-lint.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
 ## Dropped at the 2026-07-12 sync
 
 - The fork's `fm-stale-ack.sh` mechanism was removed in favor of upstream pull request 421 at `7788fa3`, which uses `paused: <reason>` for declared external waits.
