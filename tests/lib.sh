@@ -160,29 +160,6 @@ fm_write_secondmate_meta() {
     "projects=$projects"
 }
 
-# --- node TypeScript capability ----------------------------------------------
-
-# fm_node_can_import_ts: return 0 when the installed node can import .ts
-# modules directly (type stripping, default since node 22.18), 1 otherwise.
-# Pi extension runtime tests skip when node cannot load TypeScript, mirroring
-# the tsc-missing skip in fm-pi-primary-types.test.sh. Cached per process.
-fm_node_can_import_ts() {
-  if [ -z "${FM_NODE_TS_CAPABLE:-}" ]; then
-    local probe_dir
-    probe_dir=$(mktemp -d "${TMPDIR:-/tmp}/fm-node-ts-probe.XXXXXX")
-    printf 'export const ok: string = "ok";\n' > "$probe_dir/probe.ts"
-    if FM_TS_PROBE="$probe_dir/probe.ts" node --input-type=module -e \
-      'const { pathToFileURL } = await import("node:url"); await import(pathToFileURL(process.env.FM_TS_PROBE).href);' \
-      >/dev/null 2>&1; then
-      FM_NODE_TS_CAPABLE=1
-    else
-      FM_NODE_TS_CAPABLE=0
-    fi
-    rm -rf "$probe_dir"
-  fi
-  [ "$FM_NODE_TS_CAPABLE" = 1 ]
-}
-
 # --- common assertions ------------------------------------------------------
 
 # assert_contains <haystack> <needle> <msg>

@@ -13,9 +13,9 @@
 # "already running" off the dying process. That exact mistake silently took
 # supervision down for ~30 minutes.
 # On a harness with a PreToolUse-equivalent hook, bin/fm-arm-pretool-check.sh
-# denies that anti-pattern (and piped/bundled/pkill variants of it) before the
-# command ever runs; see docs/arm-pretool-check.md. It is a seatbelt for known-
-# bad shapes, not a substitute for the verification this script performs.
+# applies the command-position policy before the command runs; see
+# docs/arm-pretool-check.md for the blessed tree and deny reason codes. It is a
+# pre-execution seatbelt, not a substitute for the verification here.
 #
 # This script forks the watcher as a tracked child, then VERIFIES the outcome
 # before it settles in. It confirms a watcher process is genuinely alive AND the
@@ -27,8 +27,7 @@
 #                                                          holding the lock; this arm attaches and
 #                                                          waits until that cycle ends
 #   watcher: healthy pid=<N> (beacon <age>s)             - restart mode found a live+fresh
-#                                                          watcher it did not own and did
-#                                                          not just signal
+#                                                          watcher it did not own
 #   watcher: FAILED - no live watcher with a fresh beacon  - could not confirm one
 # It NEVER reports started/attached/healthy off a stale beacon or a dead/reused pid: a
 # stale-beacon or dead-pid holder either self-heals (the fresh child steals the
@@ -42,12 +41,7 @@
 #
 # --restart: stop ONLY this FM_HOME's watcher (the pid recorded in THIS home's
 # state/.watch.lock) and own a fresh cycle, or report restart-only healthy if a
-# live peer still holds the lock after the duplicate child stands down. That
-# peer must not be the pid this restart just sent TERM: a signaled holder that
-# outlives the stop wait (deferred signal, wedged) still shows a fresh beacon
-# and matching identity, but it is dying, so treating it as healthy would leave
-# no watcher moments after a success report - restart keeps polling for a
-# genuinely fresh cycle instead and reports FAILED if none confirms. It
+# live peer still holds the lock after the duplicate child stands down. It
 # resolves and signals exactly that pid, so it can never touch another home's
 # watcher. NEVER `pkill -f
 # bin/fm-watch.sh`: that pattern matches every firstmate home's watcher
@@ -141,14 +135,12 @@ case "${1:-}" in
   *) echo "usage: $(basename "$0") [--restart]" >&2; exit 2 ;;
 esac
 
-restart_stopped_pid=
 if [ "$mode" = restart ]; then
   # Home-scoped stop: only the watcher pid recorded in THIS home's lock.
   lock_pid=$(cat "$WATCH_LOCK/pid" 2>/dev/null || true)
   if fm_pid_alive "$lock_pid"; then
     if fm_watcher_lock_matches_pid "$STATE" "$WATCH" "$lock_pid" "$FM_HOME"; then
       kill -TERM "$lock_pid" 2>/dev/null || true
-      restart_stopped_pid=$lock_pid
       # Wait for it to actually exit before relaunching, so the fresh watcher
       # either takes a released lock or reclaims a now-dead-pid stale lock instead
       # of seeing the dying one as a live holder and no-opping.
@@ -221,18 +213,10 @@ while :; do
       trap - HUP TERM INT
       attach_and_wait "$HEALTHY_PID"
     fi
-    # Restart mode: a "healthy" holder that is the pid this restart just sent
-    # TERM is not healthy - it is dying with its signal deferred (or wedged),
-    # and its still-fresh beacon and matching identity would otherwise pass the
-    # honesty gate. Reporting healthy off it leaves NO watcher moments later.
-    # Keep polling instead: either it exits in time and the fresh cycle is
-    # confirmed, or the deadline lapses and this reports FAILED loudly.
-    if [ "$HEALTHY_PID" != "$restart_stopped_pid" ]; then
-      report_healthy
-      wait "$child" 2>/dev/null || true
-      rm -f "$child_out" 2>/dev/null || true
-      exit 0
-    fi
+    report_healthy
+    wait "$child" 2>/dev/null || true
+    rm -f "$child_out" 2>/dev/null || true
+    exit 0
   fi
   if [ "$child_done" -eq 0 ] && ! fm_pid_alive "$child"; then
     wait "$child"

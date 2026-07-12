@@ -594,10 +594,6 @@ test_pi_extension_forces_followup() {
 
 test_pi_extension_injects_once_per_logical_agent_run() {
   local repo home ext log out status
-  if ! fm_node_can_import_ts; then
-    echo "skip: node cannot import the .ts Pi extension (type stripping unavailable)"
-    return 0
-  fi
   repo="$TMP_ROOT/pi-logical-run-root"
   home="$TMP_ROOT/pi-logical-run-home"
   ext="$repo/.pi/extensions/fm-primary-turnend-guard.ts"
@@ -660,10 +656,6 @@ EOF
 
 test_pi_extension_retries_after_followup_delivery_failure() {
   local repo home ext out status
-  if ! fm_node_can_import_ts; then
-    echo "skip: node cannot import the .ts Pi extension (type stripping unavailable)"
-    return 0
-  fi
   repo="$TMP_ROOT/pi-delivery-failure-root"
   home="$TMP_ROOT/pi-delivery-failure-home"
   ext="$repo/.pi/extensions/fm-primary-turnend-guard.ts"
