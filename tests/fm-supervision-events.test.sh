@@ -54,7 +54,10 @@ grep -q 'stale' "$STATE_DIR/.wake-queue" || fail "the enqueued wake must be a st
 grep -q 'default:wG:pQ' "$STATE_DIR/.wake-queue" || fail "the stale record must name the crew's window"
 grep -q 'herdr: agent blocked' "$STATE_DIR/.wake-queue" || fail "the stale payload must name the herdr-blocked cause"
 [ -s "$WAKE_LOG" ] || fail "handle_push_transition must wake the supervisor for a blocked crew"
-[ "$(cat "$WAKE_LOG")" = "stale: default:wG:pQ" ] || fail "the supervisor wake must carry the exact unannotated window target: $(cat "$WAKE_LOG")"
+IFS=$'\t' read -r WAKE_TARGET WAKE_CONTEXT < "$WAKE_LOG"
+[ "$WAKE_TARGET" = "stale: default:wG:pQ" ] || fail "the supervisor wake must carry the exact unannotated window target: $(cat "$WAKE_LOG")"
+[ "$WAKE_CONTEXT" = "herdr: agent blocked - waiting on human, escalated immediately, not via wedge timer" ] \
+  || fail "the supervisor wake must carry the Herdr blocked cause separately: $(cat "$WAKE_LOG")"
 [ -e "$STATE_DIR/.herdr-escalated-default_wG_pQ" ] || fail "handle_push_transition must commit dedupe only after enqueue"
 pass "handle_push_transition: a blocked crew enqueues a stale wake naming its window and wakes the supervisor"
 

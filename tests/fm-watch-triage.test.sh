@@ -112,12 +112,13 @@ test_scan_captain_relevant_statuses_classifier() {
   local dir state out
   dir=$(make_case classify-scan); state="$dir/state"
   printf 'working: a\n' > "$state/one.status"
-  printf 'blocked [key=access]: no perms\nworking: collecting diagnostics\n' > "$state/two.status"
+  printf 'blocked [key=access]: no perms\ndone: PR https://x/y/pull/2\nworking: collecting diagnostics\n' > "$state/two.status"
   printf 'done: PR https://x/y/pull/1\n' > "$state/three.status"
   printf 'needs-decision [key=closed]: old choice\nresolved [key=closed]: captain chose A\nworking: implementing A\n' > "$state/four.status"
   out=$(scan_captain_relevant_statuses "$state")
   printf '%s' "$out" | grep -F "two.status" >/dev/null || fail "scan missed a blocked: status"
   printf '%s' "$out" | grep -F "blocked [key=access]: no perms" >/dev/null || fail "scan lost an open keyed decision behind a later event"
+  printf '%s' "$out" | grep -F "done: PR https://x/y/pull/2" >/dev/null || fail "scan lost a terminal event behind a later working event"
   printf '%s' "$out" | grep -F "three.status" >/dev/null || fail "scan missed a done: status"
   printf '%s' "$out" | grep -F "one.status" >/dev/null && fail "scan surfaced a benign working: status"
   printf '%s' "$out" | grep -F "four.status" >/dev/null && fail "scan retained an explicitly resolved decision"

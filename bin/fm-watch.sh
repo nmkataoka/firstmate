@@ -564,7 +564,7 @@ event_wait_or_sleep() {
 # machinery already understands it (queued by key=window, so a later poll-path
 # stale for the same pane collapses on drain).
 handle_push_transition() {  # <backend> <session> <record>
-  local backend=$1 session=$2 record=$3 pane_id to window task reason
+  local backend=$1 session=$2 record=$3 pane_id to window task detail reason
   pane_id=$(fm_transition_pane_id "$record")
   to=$(fm_transition_to_status "$record")
   [ -n "$pane_id" ] || { sleep 1; return; }
@@ -576,11 +576,12 @@ handle_push_transition() {  # <backend> <session> <record>
     fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || exit 1
     return
   fi
-  reason="stale: $window (herdr: agent $to - waiting on human, escalated immediately, not via wedge timer)"
+  detail="herdr: agent $to - waiting on human, escalated immediately, not via wedge timer"
+  reason="stale: $window ($detail)"
   fm_wake_append stale "$window" "$reason" || exit 1
   fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || exit 1
   mark_surfaced "$STATE/$task.status"
-  wake "stale: $window"
+  wake "stale: $window"$'\t'"$detail"
 }
 
 # --- Main entry: the runtime below runs only when this file is executed as a

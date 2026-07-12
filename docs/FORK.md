@@ -69,9 +69,9 @@ Detached Herdr and tmux AFK launches pass the prepared-state marker and resolved
 
 ### Exact Herdr push-wake targets
 
-Herdr blocked-transition wakes pass the exact unannotated window target to supervision while retaining the diagnostic annotation in the durable queue payload.
+Herdr blocked-transition wakes pass the exact unannotated window target and separate actionable context to supervision while retaining the diagnostic annotation in the durable queue payload.
 
-- Files touched: `bin/fm-watch.sh` and `tests/fm-supervision-events.test.sh`.
+- Files touched: `bin/fm-watch.sh`, `bin/fm-supervise-daemon.sh`, `tests/fm-daemon.test.sh`, and `tests/fm-supervision-events.test.sh`.
 - Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
 
 ### Durable keyed-decision supervision

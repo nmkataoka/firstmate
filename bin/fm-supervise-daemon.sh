@@ -354,8 +354,8 @@ classify_signal() {  # <reason-after-colon> <state>
 # classify_stale decides the WAKE itself (one-shot per distinct hash). On a
 # first sight of a non-terminal stale it returns "self" and the caller records a
 # timestamp marker; persistence is escalated by housekeeping's recheck, not here.
-classify_stale() {  # <window> <state>
-  local win=$1 state=$2 task last summary seen
+classify_stale() {  # <window> <state> [context]
+  local win=$1 state=$2 context=${3:-} task last summary seen
   task=$(window_to_task "$win" "$state")
   last=$(last_status_line "$state/$task.status")
   summary=$(status_captain_relevant_summary "$state/$task.status")
@@ -366,6 +366,10 @@ classify_stale() {  # <window> <state>
       return
     fi
     printf 'escalate|stale + terminal status: %s' "$summary"
+    return
+  fi
+  if [ -n "$context" ]; then
+    printf 'escalate|stale + actionable context: %s' "$context"
     return
   fi
   if [ -n "$last" ] && status_is_paused "$last"; then
@@ -1159,7 +1163,7 @@ is_wake_reason() {  # <reason>
 # Side effects: logging, marker records, escalation buffer appends.
 handle_wake() {  # <reason> <state>
   local reason=$1 state=$2 decision action distilled task last
-  local kind="" arg=""
+  local kind="" arg="" context=""
   if should_force_self "$reason"; then
     log "wake force-self (FM_INJECT_SKIP): $reason"
     return
@@ -1168,7 +1172,10 @@ handle_wake() {  # <reason> <state>
     signal:*) kind=signal; arg="${reason#signal: }"
               decision=$(classify_signal "$arg" "$state") ;;
     stale:*)  kind=stale; arg="${reason#stale: }"
-              decision=$(classify_stale "$arg" "$state") ;;
+              case "$arg" in
+                *$'\t'*) context=${arg#*$'\t'}; arg=${arg%%$'\t'*} ;;
+              esac
+              decision=$(classify_stale "$arg" "$state" "$context") ;;
     check:*)  decision=$(classify_check "$reason") ;;
     heartbeat|heartbeat:*) decision=$(classify_heartbeat) ;;
     *)        decision=$(classify_unknown "$reason") ;;

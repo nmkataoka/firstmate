@@ -908,12 +908,27 @@ test_classify_signal_surfaces_terminal_after_open_decision() {
   key=$(printf '%s' "terminal-after-decision" | tr ':/.' '___')
   printf 'needs-decision [key=api]: choose API shape' > "$state/.subsuper-seen-status-$key"
   printf 'done: PR https://x/y/pull/11\n' >> "$state/terminal-after-decision.status"
+  printf 'working: preparing release notes\n' >> "$state/terminal-after-decision.status"
   out=$(FM_STATE_OVERRIDE="$state" classify_signal "$state/terminal-after-decision.status" "$state")
   case "$out" in
     escalate\|*"needs-decision [key=api]: choose API shape"*"done: PR https://x/y/pull/11"*) ;;
     *) fail "new terminal event was suppressed behind an already-seen open decision: $out" ;;
   esac
   pass "classify_signal surfaces a new terminal event alongside an open decision"
+}
+
+test_handle_wake_escalates_actionable_stale_context() {
+  local dir state win key
+  dir=$(make_supercase stale-actionable-context)
+  state="$dir/state"
+  win="default:w1:p2"
+  key=$(printf '%s' "herdr-no-status" | tr ':/.' '___')
+  fm_write_meta "$state/herdr-no-status.meta" "window=$win" "backend=herdr"
+  FM_STATE_OVERRIDE="$state" handle_wake "stale: $win"$'\t'"herdr: agent blocked - waiting on human" "$state"
+  grep -F "herdr: agent blocked - waiting on human" "$state/.subsuper-escalations" >/dev/null \
+    || fail "actionable Herdr context without a status entry was not escalated"
+  [ ! -e "$state/.subsuper-stale-$key" ] || fail "actionable Herdr context was tracked as a transient stale"
+  pass "handle_wake preserves the exact stale target while escalating separate actionable context"
 }
 
 test_classify_stale_dedup_against_signal() {
@@ -1725,6 +1740,7 @@ test_tmux_composer_state_requires_matching_box_borders
 test_pane_input_pending_honors_idle_override_after_border_strip
 test_classify_signal_dedup_against_scan
 test_classify_signal_surfaces_terminal_after_open_decision
+test_handle_wake_escalates_actionable_stale_context
 test_classify_stale_dedup_against_signal
 test_pane_input_pending_bordered_idle_not_pending
 test_pane_input_pending_bordered_with_text_is_pending

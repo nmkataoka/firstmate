@@ -188,7 +188,7 @@ status_open_decisions() {  # <status-file>
 }
 
 status_captain_relevant_summary() {  # <status-file>
-  local f=$1 open key verb note line last summary=''
+  local f=$1 open key verb note line last latest='' summary=''
   [ -f "$f" ] || return 0
   last=$(last_status_line "$f")
   open=$(status_open_decisions "$f")
@@ -206,13 +206,21 @@ status_captain_relevant_summary() {  # <status-file>
     done <<EOF
 $open
 EOF
+    while IFS= read -r line || [ -n "$line" ]; do
+      status_is_captain_relevant "$line" || continue
+      verb=$(status_line_verb "$line")
+      case "$verb" in needs-decision|blocked) continue ;; esac
+      latest=$line
+    done < "$f"
+  elif status_is_captain_relevant "$last"; then
+    latest=$last
   fi
-  if status_is_captain_relevant "$last"; then
+  if [ -n "$latest" ]; then
     case " | $summary | " in
-      *" | $last | "*) ;;
+      *" | $latest | "*) ;;
       *)
         [ -n "$summary" ] && summary="$summary | "
-        summary="$summary$last"
+        summary="$summary$latest"
         ;;
     esac
   fi
