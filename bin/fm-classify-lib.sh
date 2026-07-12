@@ -188,8 +188,9 @@ status_open_decisions() {  # <status-file>
 }
 
 status_captain_relevant_summary() {  # <status-file>
-  local f=$1 open key verb note line summary=''
+  local f=$1 open key verb note line last summary=''
   [ -f "$f" ] || return 0
+  last=$(last_status_line "$f")
   open=$(status_open_decisions "$f")
   if [ -n "$open" ]; then
     while IFS=$'\t' read -r key verb note; do
@@ -205,15 +206,17 @@ status_captain_relevant_summary() {  # <status-file>
     done <<EOF
 $open
 EOF
-    if [ -n "$summary" ]; then
-      printf '%s' "$summary"
-      return 0
-    fi
   fi
-  line=$(last_status_line "$f")
-  if status_is_captain_relevant "$line"; then
-    printf '%s' "$line"
+  if status_is_captain_relevant "$last"; then
+    case " | $summary | " in
+      *" | $last | "*) ;;
+      *)
+        [ -n "$summary" ] && summary="$summary | "
+        summary="$summary$last"
+        ;;
+    esac
   fi
+  printf '%s' "$summary"
   return 0
 }
 

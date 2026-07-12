@@ -900,6 +900,22 @@ test_classify_signal_dedup_against_scan() {
   pass "classify_signal dedupes against the catch-all scan seen marker"
 }
 
+test_classify_signal_surfaces_terminal_after_open_decision() {
+  local dir state key out
+  dir=$(make_supercase signal-open-decision-terminal)
+  state="$dir/state"
+  printf 'needs-decision [key=api]: choose API shape\n' > "$state/terminal-after-decision.status"
+  key=$(printf '%s' "terminal-after-decision" | tr ':/.' '___')
+  printf 'needs-decision [key=api]: choose API shape' > "$state/.subsuper-seen-status-$key"
+  printf 'done: PR https://x/y/pull/11\n' >> "$state/terminal-after-decision.status"
+  out=$(FM_STATE_OVERRIDE="$state" classify_signal "$state/terminal-after-decision.status" "$state")
+  case "$out" in
+    escalate\|*"needs-decision [key=api]: choose API shape"*"done: PR https://x/y/pull/11"*) ;;
+    *) fail "new terminal event was suppressed behind an already-seen open decision: $out" ;;
+  esac
+  pass "classify_signal surfaces a new terminal event alongside an open decision"
+}
+
 test_classify_stale_dedup_against_signal() {
   # If the signal path already escalated a status (seen marker matches),
   # classify_stale must self-handle to avoid a duplicate in the digest.
@@ -1708,6 +1724,7 @@ test_tmux_composer_state_bordered_and_agent_rows_are_empty
 test_tmux_composer_state_requires_matching_box_borders
 test_pane_input_pending_honors_idle_override_after_border_strip
 test_classify_signal_dedup_against_scan
+test_classify_signal_surfaces_terminal_after_open_decision
 test_classify_stale_dedup_against_signal
 test_pane_input_pending_bordered_idle_not_pending
 test_pane_input_pending_bordered_with_text_is_pending

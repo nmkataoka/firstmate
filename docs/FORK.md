@@ -39,6 +39,48 @@ The GOTMP teardown fixture includes the shared composer library that upstream's 
 - Files touched: `tests/fm-gotmp.test.sh`.
 - Upstream status: `upstream/main` at `ad9f3a7` fails this test because the fixture omits that transitive dependency, so the fork carries the minimal fixture repair until upstream includes an equivalent fix.
 
+### Linked secondmate primary CD guard
+
+The primary-shell CD guard applies inside linked secondmate homes while continuing to exempt linked crewmate and scout worktrees.
+
+- Files touched: `bin/fm-cd-pretool-check.sh` and `tests/fm-cd-pretool-check.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
+### Herdr secondmate liveness confidence
+
+Bootstrap treats a Herdr dead reading as conclusive only for Claude and Codex, whose agent registration Herdr can verify, so an unregistered Grok, OpenCode, or Pi process cannot trigger a duplicate secondmate.
+
+- Files touched: `bin/fm-bootstrap.sh` and `tests/fm-secondmate-liveness.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
+### Watcher restart PID ownership
+
+Watcher restart rejects the PID it just signaled as the healthy replacement, so a TERM-resistant watcher cannot make restart report success immediately before it exits.
+
+- Files touched: `bin/fm-watch-arm.sh` and `tests/fm-watcher-lock.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
+### Detached AFK environment propagation
+
+Detached Herdr and tmux AFK launches pass the prepared-state marker and resolved state and config overrides into the daemon child.
+
+- Files touched: `bin/fm-afk-launch.sh` and `tests/fm-afk-launch.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
+### Exact Herdr push-wake targets
+
+Herdr blocked-transition wakes pass the exact unannotated window target to supervision while retaining the diagnostic annotation in the durable queue payload.
+
+- Files touched: `bin/fm-watch.sh` and `tests/fm-supervision-events.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
+### Durable keyed-decision supervision
+
+The watcher and away daemon classify the authoritative keyed-decision fold, retain open decisions behind later events, and include the latest distinct captain-relevant event in their dedupe summary.
+
+- Files touched: `bin/fm-classify-lib.sh`, `bin/fm-supervise-daemon.sh`, `bin/fm-watch.sh`, `tests/fm-daemon.test.sh`, and `tests/fm-watch-triage.test.sh`.
+- Upstream status: fork-only review fix with no equivalent in `upstream/main` at `ad9f3a7`.
+
 ## Dropped at the 2026-07-12 sync
 
 - The fork's `fm-stale-ack.sh` mechanism was removed in favor of upstream pull request 421 at `7788fa3`, which uses `paused: <reason>` for declared external waits.
