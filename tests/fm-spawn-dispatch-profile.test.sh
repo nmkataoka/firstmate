@@ -42,6 +42,17 @@ esac
 exit 0
 SH
   chmod +x "$fakebin/tmux"
+  cat > "$fakebin/mv" <<'SH'
+#!/usr/bin/env bash
+set -u
+last=
+for arg in "$@"; do last=$arg; done
+if [ -n "${FM_FAKE_META_MV_FAIL_DEST:-}" ] && [ "$last" = "$FM_FAKE_META_MV_FAIL_DEST" ]; then
+  exit 1
+fi
+exec /bin/mv "$@"
+SH
+  chmod +x "$fakebin/mv"
   fm_fake_exit0 "$fakebin" treehouse pi-signed
   printf '%s\n' "$fakebin"
 }
@@ -547,6 +558,41 @@ test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata() {
   pass "pi-signed refuses safely and actionably when the selected executable is unavailable"
 }
 
+test_metadata_writer_propagates_output_failure() {
+  local source
+  source=$(sed -n '/^write_task_metadata()/,/^}/p' "$SPAWN")
+  if META_SOURCE="$source" bash -c '
+    eval "$META_SOURCE"
+    printf() { return 73; }
+    META_WINDOW=window ID=task WT=worktree PROJ_ABS=project HARNESS=codex
+    KIND=ship MODE=direct-PR YOLO=off TASK_TMP=tmp MODEL=default EFFORT=default BACKEND=tmux
+    write_task_metadata
+  '; then
+    fail "metadata writer masked its output failure"
+  fi
+  pass "metadata writer propagates its output failure"
+}
+
+test_metadata_publication_is_atomic() {
+  local rec id out status meta
+  id=profile-metadata-atomic-z8d
+  rec=$(make_spawn_case profile-metadata-atomic codex "$id")
+  read_case_record "$rec"
+  meta="$HOME_DIR/state/$id.meta"
+
+  out=$(FM_FAKE_META_MV_FAIL_DEST="$meta" \
+    run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 1 "$status" "metadata rename failure should refuse the spawn"
+  assert_contains "$out" "failed to publish task metadata" \
+    "metadata rename failure did not report publication failure"
+  assert_absent "$meta" "metadata rename failure published a partial final file"
+  [ -z "$(find "$HOME_DIR/state" -name ".$id.meta.*" -print -quit)" ] \
+    || fail "metadata rename failure retained its pending file"
+  [ ! -s "$LAUNCH_LOG" ] || fail "metadata rename failure typed a launch command"
+  pass "metadata publication is atomic and cleans failed pending files"
+}
+
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
   local rec id sm out status launch
   id=profile-pi-signed-secondmate-z8d
@@ -675,6 +721,8 @@ test_opencode_threads_model_and_ignores_effort_axis
 test_pi_threads_model_and_max_effort
 test_pi_signed_threads_shared_pi_profile_and_preserves_identity
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
+test_metadata_writer_propagates_output_failure
+test_metadata_publication_is_atomic
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags
 test_claude_forwards_firstmate_config_dir_when_set

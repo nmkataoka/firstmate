@@ -368,6 +368,17 @@ classify_stale() {  # <window> <state> [context]
   task=$(window_to_task "$win" "$state")
   last=$(last_status_line "$state/$task.status")
   summary=$(status_captain_relevant_summary "$state/$task.status")
+  if [ -n "$context" ]; then
+    if [ -n "$summary" ]; then
+      seen="$state/.subsuper-seen-status-$(_stale_key "$task")"
+      if [ "$(cat "$seen" 2>/dev/null || true)" != "$summary" ]; then
+        printf 'escalate|stale + terminal status: %s | actionable context: %s' "$summary" "$context"
+        return
+      fi
+    fi
+    printf 'escalate|stale + actionable context: %s' "$context"
+    return
+  fi
   if [ -n "$summary" ]; then
     seen="$state/.subsuper-seen-status-$(_stale_key "$task")"
     if [ "$(cat "$seen" 2>/dev/null || true)" = "$summary" ]; then
@@ -375,10 +386,6 @@ classify_stale() {  # <window> <state> [context]
       return
     fi
     printf 'escalate|stale + terminal status: %s' "$summary"
-    return
-  fi
-  if [ -n "$context" ]; then
-    printf 'escalate|stale + actionable context: %s' "$context"
     return
   fi
   if [ -n "$last" ] && status_is_paused "$last"; then

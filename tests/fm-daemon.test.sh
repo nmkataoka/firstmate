@@ -952,6 +952,24 @@ test_handle_wake_escalates_actionable_stale_context() {
   pass "handle_wake preserves the exact stale target while escalating separate actionable context"
 }
 
+test_handle_wake_escalates_fresh_context_after_seen_status() {
+  local dir state win key context
+  dir=$(make_supercase stale-fresh-context-after-seen-status)
+  state="$dir/state"
+  win="default:w1:p3"
+  key=$(printf '%s' "herdr-seen-status" | tr ':/.' '___')
+  context="herdr: agent blocked - approval required"
+  fm_write_meta "$state/herdr-seen-status.meta" "window=$win" "backend=herdr"
+  printf 'done: PR https://x/y/pull/12\n' > "$state/herdr-seen-status.status"
+  printf 'done: PR https://x/y/pull/12' > "$state/.subsuper-seen-status-$key"
+  FM_STATE_OVERRIDE="$state" handle_wake "stale: $win"$'\t'"$context" "$state"
+  grep -F "$context" "$state/.subsuper-escalations" >/dev/null \
+    || fail "fresh actionable Herdr context was suppressed by an already-seen status"
+  [ ! -e "$state/.subsuper-stale-$key" ] \
+    || fail "fresh actionable Herdr context after a seen status was tracked as transient"
+  pass "fresh actionable Herdr context survives independent status dedupe"
+}
+
 test_classify_stale_dedup_against_signal() {
   # If the signal path already escalated a status (seen marker matches),
   # classify_stale must self-handle to avoid a duplicate in the digest.
@@ -1857,6 +1875,7 @@ test_pane_input_pending_honors_idle_override_after_border_strip
 test_classify_signal_dedup_against_scan
 test_classify_signal_surfaces_terminal_after_open_decision
 test_handle_wake_escalates_actionable_stale_context
+test_handle_wake_escalates_fresh_context_after_seen_status
 test_classify_stale_dedup_against_signal
 test_afk_nonterminal_working_merged_keeps_wedge_aging
 test_afk_genuine_done_still_terminal_stale
