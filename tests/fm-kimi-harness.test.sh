@@ -8,12 +8,8 @@ set -u
 SPAWN="$ROOT/bin/fm-spawn.sh"
 TEARDOWN="$ROOT/bin/fm-teardown.sh"
 KIMI_HOOK="$ROOT/bin/fm-kimi-turnend-hook.sh"
-PYTHON_BIN=$(command -v python3) || fail "test needs python3"
-if ! "$PYTHON_BIN" -c 'import tomllib' >/dev/null 2>&1; then
-  printf 'skip: python3 with tomllib is required for Kimi hook tests\n'
-  exit 0
-fi
 TMP_ROOT=$(fm_test_tmproot fm-kimi-harness)
+PYTHON_BIN=$(command -v python3) || fail "test needs python3"
 PYTHON_BIN_DIR=$(dirname "$PYTHON_BIN")
 JQ_BIN=$(command -v jq) || fail "test needs jq"
 BASE_PATH=${FM_TEST_BASE_PATH:-$PYTHON_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin}
