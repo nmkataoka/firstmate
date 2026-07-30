@@ -25,7 +25,7 @@ The watcher re-stamps `state/.last-watcher-beat` on every fire so macOS sleep ca
 
 The fork can pin a full or simple review tier into direct-PR briefs, run the review-only no-mistakes pass plus an independent reviewer, and keep reviewer findings off GitHub.
 
-- Files touched: `.agents/skills/pr-review-dispatch/SKILL.md`, `.gitignore`, `AGENTS.md`, `CONTRIBUTING.md`, `bin/fm-brief.sh`, `bin/fm-review-launch.sh`, `crew/review/diff-review.md`, `crew/review/post-comments.md`, `crew/review/review-procedure.md`, `crew/review/tests-and-comments.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/examples/review.env`, `docs/scripts.md`, `tests/fm-brief.test.sh`, and `tests/fm-review-launch.test.sh`.
+- Files touched: `.agents/skills/pr-review-dispatch/SKILL.md`, `.gitignore`, `AGENTS.md`, `CONTRIBUTING.md`, `bin/fm-brief.sh`, `bin/fm-review-launch.sh`, `crew/review/diff-review.md`, `crew/review/post-comments.md`, `crew/review/review-procedure.md`, `crew/review/tests-and-comments.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/documentation-audiences.json`, `docs/examples/review.env`, `docs/scripts.md`, `tests/fm-brief.test.sh`, and `tests/fm-review-launch.test.sh`.
 - Upstream status: fork-only workflow that is not proposed for upstream.
 
 ### Visual PR screenshot evidence
@@ -95,6 +95,7 @@ Behavior-test CI installs the capability-verified `tasks-axi` 0.2.2 release inst
 
 - `bin/fm-spawn.sh` now fails closed and runs backend cleanup when task metadata publication fails under stock macOS Bash 3.2; upstream's compound-command redirection continued after the failure on Bash 3.2.
 - `tests/fm-session-start.test.sh` derives concurrent contender identities without `BASHPID`, which stock macOS Bash 3.2 does not provide.
+- The maintained prose now reflects the numeric-PR review launcher boundary, keyed snapshot clearing, the universal `jq` dependency, and the newly indexed scripts.
 
 ## Dropped at the 2026-07-29 sync
 
