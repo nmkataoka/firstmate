@@ -300,7 +300,6 @@ spawn_task_artifact_cleanup() {
   esac
   rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.pi-ext.ts" \
     "$STATE/$ID.grok-turnend-token" "$STATE/$ID.kimi-turnend-token"
-  [ -z "${TASK_TMP:-}" ] || rm -rf "$TASK_TMP"
 }
 
 spawn_metadata_failure_cleanup() {  # <projected-herdr-cleanup>
@@ -324,12 +323,15 @@ spawn_metadata_failure_cleanup() {  # <projected-herdr-cleanup>
       ;;
   esac
   if [ "$BACKEND" != orca ]; then
-    spawn_task_artifact_cleanup
-    if [ "$KIND" != secondmate ] && [ -n "${WT:-}" ] && [ -d "$WT" ]; then
-      if ! ( cd "$PROJ_ABS" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
-        echo "warning: failed to return worktree after metadata publication failure: $WT" >&2
+    if [ "$KIND" != secondmate ]; then
+      spawn_task_artifact_cleanup
+      if [ -n "${WT:-}" ] && [ -d "$WT" ]; then
+        if ! ( cd "$PROJ_ABS" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
+          echo "warning: failed to return worktree after metadata publication failure: $WT" >&2
+        fi
       fi
     fi
+    [ -z "${TASK_TMP:-}" ] || rm -rf "$TASK_TMP"
   fi
 }
 

@@ -622,18 +622,17 @@ test_metadata_publication_is_atomic() {
 }
 
 test_metadata_failure_cleanup_removes_task_artifacts() {
-  local source case_dir state worktree task_tmp test_home grok_home grok_token kimi_token
+  local source case_dir state worktree test_home grok_home grok_token kimi_token
   source=$(sed -n '/^spawn_task_artifact_cleanup()/,/^}/p' "$SPAWN")
   case_dir="$TMP_ROOT/metadata-artifact-cleanup"
   state="$case_dir/state"
   worktree="$case_dir/worktree"
-  task_tmp="$case_dir/task-tmp"
   test_home="$case_dir/home"
   grok_home="$case_dir/grok-home"
   grok_token=fm.abcdefghijkl
   kimi_token=fm.mnopqrstuvwx
   mkdir -p "$state" "$worktree/.claude" "$worktree/.opencode/plugins" \
-    "$task_tmp/gotmp" "$grok_home/hooks/fm-turn-end.d" \
+    "$grok_home/hooks/fm-turn-end.d" \
     "$test_home/.kimi-code/fm-turn-end.d"
   touch "$worktree/.claude/settings.local.json" "$worktree/.opencode/plugins/fm-turn-end.js" \
     "$worktree/.fm-grok-turnend" "$worktree/.fm-kimi-turnend" \
@@ -644,7 +643,7 @@ test_metadata_failure_cleanup_removes_task_artifacts() {
   printf '%s\n' "$kimi_token" > "$state/task.kimi-turnend-token"
 
   ARTIFACT_CLEANUP_SOURCE="$source" STATE="$state" WT="$worktree" ID=task \
-    TASK_TMP="$task_tmp" HOME="$test_home" GROK_HOME="$grok_home" bash -c '
+    HOME="$test_home" GROK_HOME="$grok_home" bash -c '
       eval "$ARTIFACT_CLEANUP_SOURCE"
       spawn_task_artifact_cleanup
     '
@@ -659,8 +658,59 @@ test_metadata_failure_cleanup_removes_task_artifacts() {
   assert_absent "$state/task.kimi-turnend-token" "cleanup retained the Kimi token pointer"
   assert_absent "$grok_home/hooks/fm-turn-end.d/$grok_token" "cleanup retained the Grok auth token"
   assert_absent "$test_home/.kimi-code/fm-turn-end.d/$kimi_token" "cleanup retained the Kimi auth token"
-  assert_absent "$task_tmp" "cleanup retained the task temp root"
   pass "metadata failure cleanup removes task-scoped spawn artifacts"
+}
+
+test_metadata_failure_cleanup_preserves_secondmate_artifacts() {
+  local source case_dir state worktree task_tmp test_home grok_home grok_token kimi_token log
+  source=$(sed -n '/^spawn_task_artifact_cleanup()/,/^}/p' "$SPAWN")
+  source="$source
+$(sed -n '/^spawn_metadata_failure_cleanup()/,/^}/p' "$SPAWN")"
+  case_dir="$TMP_ROOT/metadata-secondmate-cleanup"
+  state="$case_dir/state"
+  worktree="$case_dir/secondmate-home"
+  task_tmp="$case_dir/task-tmp"
+  test_home="$case_dir/home"
+  grok_home="$case_dir/grok-home"
+  log="$case_dir/cleanup.log"
+  grok_token=fm.abcdefghijkl
+  kimi_token=fm.mnopqrstuvwx
+  mkdir -p "$state" "$worktree/.claude" "$worktree/.opencode/plugins" \
+    "$task_tmp/gotmp" "$grok_home/hooks/fm-turn-end.d" \
+    "$test_home/.kimi-code/fm-turn-end.d"
+  touch "$worktree/.claude/settings.local.json" "$worktree/.opencode/plugins/fm-turn-end.js" \
+    "$worktree/.fm-grok-turnend" "$worktree/.fm-kimi-turnend" \
+    "$state/task.turn-ended" "$state/task.pi-ext.ts" \
+    "$grok_home/hooks/fm-turn-end.d/$grok_token" \
+    "$test_home/.kimi-code/fm-turn-end.d/$kimi_token"
+  printf '%s\n' "$grok_token" > "$state/task.grok-turnend-token"
+  printf '%s\n' "$kimi_token" > "$state/task.kimi-turnend-token"
+
+  META_CLEANUP_SOURCE="$source" CLEANUP_LOG="$log" STATE="$state" WT="$worktree" \
+    ID=task TASK_TMP="$task_tmp" HOME="$test_home" GROK_HOME="$grok_home" bash -c '
+      eval "$META_CLEANUP_SOURCE"
+      fm_backend_kill() {
+        printf "kill" >> "$CLEANUP_LOG"
+        printf " <%s>" "$@" >> "$CLEANUP_LOG"
+        printf "\n" >> "$CLEANUP_LOG"
+      }
+      BACKEND=tmux KIND=secondmate SPAWN_METADATA_ABORT_CLEANUP=1 WID=@42
+      spawn_metadata_failure_cleanup 0
+    '
+
+  assert_grep 'kill <tmux> <@42>' "$log" "secondmate cleanup did not remove its exact endpoint"
+  assert_present "$worktree/.claude/settings.local.json" "cleanup removed the secondmate Claude config"
+  assert_present "$worktree/.opencode/plugins/fm-turn-end.js" "cleanup removed the secondmate OpenCode plugin"
+  assert_present "$worktree/.fm-grok-turnend" "cleanup removed the secondmate Grok pointer"
+  assert_present "$worktree/.fm-kimi-turnend" "cleanup removed the secondmate Kimi pointer"
+  assert_present "$state/task.turn-ended" "cleanup removed pre-existing secondmate task state"
+  assert_present "$state/task.pi-ext.ts" "cleanup removed the secondmate Pi extension"
+  assert_present "$state/task.grok-turnend-token" "cleanup removed the secondmate Grok token pointer"
+  assert_present "$state/task.kimi-turnend-token" "cleanup removed the secondmate Kimi token pointer"
+  assert_present "$grok_home/hooks/fm-turn-end.d/$grok_token" "cleanup removed the secondmate Grok token"
+  assert_present "$test_home/.kimi-code/fm-turn-end.d/$kimi_token" "cleanup removed the secondmate Kimi token"
+  assert_absent "$task_tmp" "cleanup retained the failed secondmate spawn temp root"
+  pass "metadata failure cleanup preserves persistent secondmate artifacts"
 }
 
 test_metadata_failure_cleanup_targets_each_backend_exactly() {
@@ -849,6 +899,7 @@ test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_metadata_writer_propagates_output_failure
 test_metadata_publication_is_atomic
 test_metadata_failure_cleanup_removes_task_artifacts
+test_metadata_failure_cleanup_preserves_secondmate_artifacts
 test_metadata_failure_cleanup_targets_each_backend_exactly
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags
