@@ -58,6 +58,7 @@ case "$1 ${2:-}" in
   "session stop")
     [ "$3" = "$session" ] || exit 91
     printf '%s\n' stopped > "$state/$session"
+    [ "${FM_FAKE_HERDR_STOP_FAIL_AFTER_STOP:-}" != 1 ] || exit 94
     ;;
   "session delete")
     [ "$3" = "$session" ] || exit 92
@@ -82,6 +83,7 @@ run_with_fake() {
     FM_FAKE_HERDR_SERVER_DELAY="${FM_FAKE_HERDR_SERVER_DELAY:-0}" \
     FM_FAKE_HERDR_FAST_POLL="${FM_FAKE_HERDR_FAST_POLL:-}" \
     FM_FAKE_HERDR_DELETE_FAIL="${FM_FAKE_HERDR_DELETE_FAIL:-}" \
+    FM_FAKE_HERDR_STOP_FAIL_AFTER_STOP="${FM_FAKE_HERDR_STOP_FAIL_AFTER_STOP:-}" \
     FM_HERDR_LAB_STATE_DIR="$TRIPWIRES" \
     "$@"
 }
@@ -195,6 +197,17 @@ test_stopped_owned_lab_can_reprovision() {
   pass "fm-herdr-lab: an owned stopped lab can re-provision safely"
 }
 
+test_stop_accepts_confirmed_async_completion() {
+  local name="fm-lab-stop-race-$$"
+  : > "$FAKE_LOG"
+  run_with_fake fm_herdr_lab_provision "$name" || fail "stop-race fixture provision failed"
+  FM_FAKE_HERDR_STOP_FAIL_AFTER_STOP=1 run_with_fake fm_herdr_lab_stop "$name" \
+    || fail "stop rejected a session whose asynchronous shutdown completed"
+  [ "$(cat "$FAKE_STATE/$name")" = stopped ] || fail "stop-race fixture did not stop"
+  run_with_fake fm_herdr_lab_teardown "$name" || fail "stop-race fixture teardown failed"
+  pass "fm-herdr-lab: a timed-out stop accepts confirmed asynchronous completion"
+}
+
 test_failed_delete_retains_tripwire() {
   local name="fm-lab-delete-failure-$$" status=0
   : > "$FAKE_LOG"
@@ -239,5 +252,6 @@ test_provision_run_and_guarded_teardown
 test_missing_tripwire_blocks_destruction
 test_changed_default_trips_after_teardown
 test_stopped_owned_lab_can_reprovision
+test_stop_accepts_confirmed_async_completion
 test_failed_delete_retains_tripwire
 test_timed_out_provision_cancels_late_launch
