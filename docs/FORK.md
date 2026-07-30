@@ -16,21 +16,21 @@ The latest synchronization merged `upstream/main` at `daf6dce` on 2026-07-29.
 
 The watcher re-stamps `state/.last-watcher-beat` on every fire so macOS sleep cannot leave supervision outside the intended post-fire grace window.
 
-- Files touched: `AGENTS.md`, `bin/fm-guard.sh`, `bin/fm-push-transition-lib.sh`, and `tests/fm-watch-triage.test.sh`.
+- Files touched: `AGENTS.md`, `bin/fm-guard.sh`, `bin/fm-push-transition-lib.sh`, `bin/fm-supervision-lib.sh`, and `tests/fm-watch-triage.test.sh`.
 - Upstream status: fork-only behavior with no equivalent in `upstream/main` at `daf6dce`.
 
 ### Post-implementation dual review
 
 The fork can pin a full or simple review tier into direct-PR briefs, run the review-only no-mistakes pass plus an independent reviewer, and keep reviewer findings off GitHub.
 
-- Files touched: `.agents/skills/pr-review-dispatch/SKILL.md`, `.gitignore`, `AGENTS.md`, `CONTRIBUTING.md`, `bin/fm-brief.sh`, `bin/fm-review-launch.sh`, `crew/review/diff-review.md`, `crew/review/post-comments.md`, `crew/review/review-procedure.md`, `crew/review/tests-and-comments.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/examples/review.env`, `docs/scripts.md`, `tests/fm-brief.test.sh`, and `tests/fm-review-launch.test.sh`.
+- Files touched: `.agents/skills/pr-review-dispatch/SKILL.md`, `.gitignore`, `AGENTS.md`, `CONTRIBUTING.md`, `bin/fm-brief.sh`, `bin/fm-review-launch.sh`, `crew/review/diff-review.md`, `crew/review/post-comments.md`, `crew/review/review-procedure.md`, `crew/review/tests-and-comments.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/documentation-audiences.json`, `docs/examples/review.env`, `docs/scripts.md`, `tests/fm-brief.test.sh`, and `tests/fm-review-launch.test.sh`.
 - Upstream status: fork-only workflow that is not proposed for upstream.
 
 ### Visual PR screenshot evidence
 
 Ship briefs allow task-local screenshots, and the review guidance publishes durable PR evidence through per-PR draft release assets with bootstrap-checked prerequisites.
 
-- Files touched: `AGENTS.md`, `bin/fm-bootstrap.sh`, `bin/fm-brief.sh`, `crew/review/pr-description-writing.md`, `docs/cmux-backend.md`, `docs/configuration.md`, `docs/herdr-backend.md`, `docs/zellij-backend.md`, `tests/fm-bootstrap.test.sh`, `tests/fm-brief.test.sh`, and `tests/fm-x-mode.test.sh`.
+- Files touched: `AGENTS.md`, `bin/fm-bootstrap.sh`, `bin/fm-brief.sh`, `crew/review/pr-description-writing.md`, `docs/cmux-backend.md`, `docs/configuration.md`, `docs/gitlab-merge-watch.md`, `docs/herdr-backend.md`, `docs/zellij-backend.md`, `tests/fm-bootstrap.test.sh`, `tests/fm-brief.test.sh`, and `tests/fm-x-mode.test.sh`.
 - Upstream status: fork-only workflow that is not proposed for upstream.
 
 ### Linked secondmate primary CD guard
@@ -91,8 +91,11 @@ Behavior-test CI installs the capability-verified `tasks-axi` 0.2.2 release inst
 
 ## Repairs added during the 2026-07-29 sync
 
-- `bin/fm-spawn.sh` now fails closed and runs backend cleanup when task metadata publication fails under stock macOS Bash 3.2; upstream's compound-command redirection continued after the failure on Bash 3.2.
+- `bin/fm-spawn.sh` now fails closed and runs backend cleanup when task metadata publication fails under stock macOS Bash 3.2, with the publication-order assertion updated in `tests/fm-backend-herdr.test.sh`; upstream's compound-command redirection continued after the failure on Bash 3.2.
 - `tests/fm-session-start.test.sh` derives concurrent contender identities without `BASHPID`, which stock macOS Bash 3.2 does not provide.
+- `bin/fm-herdr-lab.sh` accepts a nonzero stop result only after bounded named-session reads confirm asynchronous shutdown, while `tests/fm-herdr-lab.test.sh` covers that completion race.
+- `tests/fm-kimi-harness.test.sh` skips before allocating test state when Python lacks `tomllib`, `tests/fm-pi-watch-extension.test.sh` publishes fixture readiness only after its log write, and `tests/fm-test-run.test.sh` uses an explicit replacement-started handshake instead of timing alone.
+- The maintained prose and script headers now reflect universal `curl` and `jq`, the numeric-PR review launcher boundary, keyed snapshot clearing, the fire-time beacon, the Herdr stop race, and the newly added scripts.
 
 ## Dropped at the 2026-07-29 sync
 

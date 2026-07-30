@@ -5,7 +5,8 @@
 # Reports whether a firstmate home needs supervision because it has in-flight
 # work (a state/<id>.meta exists) or an X-mode relay poll
 # (state/x-watch.check.sh), and whether its watcher has a fresh liveness beacon
-# (state/.last-watcher-beat, touched every poll cycle, within the grace window).
+# (state/.last-watcher-beat, touched every poll cycle and re-stamped when a wake
+# fires, within the grace window).
 # bin/fm-guard.sh keeps its task-specific grace-based warning predicate;
 # bin/fm-turnend-guard.sh uses the status fields here for its banner but performs
 # its end-of-turn block decision with the live watcher lock check in

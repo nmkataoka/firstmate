@@ -21,6 +21,8 @@
 # delete is available only through teardown.
 # Both paths perform a fresh refuse-default check immediately before each
 # destructive call.
+# A nonzero stop result counts as complete only when bounded named-session reads
+# confirm that the exact lab session reached running=false.
 # Provision records the running default session as a fleet-state tripwire and
 # teardown requires that record to be identical afterward.
 set -u

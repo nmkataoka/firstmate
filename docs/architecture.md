@@ -29,7 +29,7 @@ Routine watcher polling, supervision no-ops, elapsed waiting time, and absorbed 
 A declared external wait trades that silence for one bounded recheck per pause window, so a forgotten pause cannot remain invisible indefinitely.
 Crew status files are append-only wake-event logs, not current-state fields.
 `needs-decision` and `blocked` events may carry `[key=<slug>]`; the shared classifier folds the complete stream so each decision remains open behind unrelated events until the configured resolution verb or a verified `captain-held` transfer closes the same key.
-Fleet snapshots clear an unkeyed open decision only from conclusive `working`, `done`, or `failed` lifecycle evidence, never from an unknown run step.
+For single-owner ship and scout tasks, fleet snapshots clear open decisions only from conclusive `working`, `done`, or `failed` lifecycle evidence, never from an unknown run step.
 `bin/fm-crew-state.sh <id>` is the cheap current-state read for an actionable heartbeat review: it attributes a no-mistakes run, active or terminal, only when it matches the crew's branch and current code identity, then keeps that run-step authoritative even if the pane has closed.
 The script header owns the exact run-head ancestry rules.
 During no-mistakes' `ci` monitor phase, it also reads the ci step log tail because `axi status` reports both "still waiting on checks" and "checks green, waiting on merge" as `ci,running`.

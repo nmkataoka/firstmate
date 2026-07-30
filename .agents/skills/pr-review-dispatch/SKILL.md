@@ -61,10 +61,10 @@ Do not break work into small PRs just to dodge or justify the expensive review.
 The conventional habit (sub-500-line chunks for human reviewability, sacrificing atomicity) can invert here: prefer keeping related work together as one coherent 1-2k line PR, run the expensive review ONCE on the whole thing, then optionally split the finalized code into a stack of smaller PRs afterward for human reviewability and safer deployment and rollbacks.
 Draw PR lines for coherence first, review economics second.
 
-## No PR yet variant
+## No PR yet
 
-When no PR exists at review time, the review targets the staged changes or the last N commits instead, attached to a non-leading PR description generated with `crew/review/pr-description-writing.md`.
-The procedure's "PR creation" section covers the normal case where the crewmate raises the PR before reviewing.
+When no PR exists at review time, the crewmate creates it first through the procedure's "PR creation" section and then runs the review against that PR.
+`bin/fm-review-launch.sh` accepts a numeric PR identifier and does not provide a staged-changes or commit-range review mode.
 
 ## Out of scope for the implementation path
 
