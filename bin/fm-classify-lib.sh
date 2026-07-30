@@ -94,19 +94,17 @@ status_is_terminal_verb() {
 }
 
 # 0 if the given (last) status line matches a captain-relevant verb.
-# Verb-aware by default: terminal verbs always match; working and configured
-# lifecycle verbs never match from free-text prose; only lines without those
-# leading verbs may still match free-text tokens for legacy bare lines such as
-# "merged" or "PR ready".
+# Verb-aware by default: terminal verbs always match; nonterminal progress verbs
+# (working, resolved, captain-held) and paused never match from free-text prose;
+# only lines without those leading verbs may still match free-text tokens for
+# legacy bare lines such as "merged" or "PR ready".
 status_is_captain_relevant() {
-  local line=$1 verb resolve held
+  local line=$1 verb
   [ -n "$line" ] || return 1
   status_is_paused "$line" && return 1
   verb=$(status_line_verb "$line")
-  resolve=${FM_CLASSIFY_RESOLVE_VERB:-$FM_CLASSIFY_RESOLVE_VERB_DEFAULT}
-  held=${FM_CLASSIFY_CAPTAIN_HELD_VERB:-$FM_CLASSIFY_CAPTAIN_HELD_VERB_DEFAULT}
   case "$verb" in
-    working|"$resolve"|"$held")
+    working|resolved|captain-held|"${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}")
       return 1
       ;;
   esac
@@ -209,12 +207,12 @@ EOF
 # the file, no globals beyond the optional FM_CLASSIFY_RESOLVE_VERB override. This
 # is the durable open-set the fleet snapshot and any point-in-time consumer must use
 # instead of trusting the last status line.
-_fm_status_open_decisions_stream() {  # <include-line-number>
-  local include_line_number=$1 line verb key note resolve held open='' stripped line_number=0
+status_open_decisions() {  # <status-file>
+  local f=$1 line verb key note resolve held open='' stripped
+  [ -f "$f" ] || return 0
   resolve=${FM_CLASSIFY_RESOLVE_VERB:-$FM_CLASSIFY_RESOLVE_VERB_DEFAULT}
   held=${FM_CLASSIFY_CAPTAIN_HELD_VERB:-$FM_CLASSIFY_CAPTAIN_HELD_VERB_DEFAULT}
   while IFS= read -r line || [ -n "$line" ]; do
-    line_number=$((line_number + 1))
     stripped=${line//[[:space:]]/}
     [ -n "$stripped" ] || continue
     verb=$(status_line_verb "$line")
@@ -224,26 +222,15 @@ _fm_status_open_decisions_stream() {  # <include-line-number>
         note=$(status_line_note "$line")
         open=$(_fm_decision_drop "$open" "$key")
         [ -n "$open" ] && open="${open}"$'\n'
-        if [ "$include_line_number" = 1 ]; then
-          open="${open}${key}"$'\t'"${line_number}"$'\t'"${verb}"$'\t'"${note}"
-        else
-          open="${open}${key}"$'\t'"${verb}"$'\t'"${note}"
-        fi
-        open="${open}"$'\n'
+        open="${open}${key}"$'\t'"${verb}"$'\t'"${note}"$'\n'
         ;;
       "$resolve"|"$held")
         open=$(_fm_decision_drop "$open" "$key")
         [ -n "$open" ] && open="${open}"$'\n'
         ;;
     esac
-  done
+  done < "$f"
   printf '%s' "$open"
-}
-
-status_open_decisions() {  # <status-file>
-  local f=$1
-  [ -f "$f" ] || return 0
-  _fm_status_open_decisions_stream 0 < "$f"
 }
 
 # Fold material routed-work phases in the same keyed event stream.
@@ -292,16 +279,13 @@ status_open_activities() {  # <status-file-or-dash>
 }
 
 status_captain_relevant_summary() {  # <status-file>
-  local f=$1 open key verb note opened_at line last latest='' summary='' first_open=0 line_number=0
+  local f=$1 open key verb note line last latest='' summary=''
   [ -f "$f" ] || return 0
   last=$(last_status_line "$f")
-  open=$(_fm_status_open_decisions_stream 1 < "$f")
+  open=$(status_open_decisions "$f")
   if [ -n "$open" ]; then
-    while IFS=$'\t' read -r key opened_at verb note; do
+    while IFS=$'\t' read -r key verb note; do
       [ -n "$key" ] || continue
-      if [ "$first_open" -eq 0 ] || [ "$opened_at" -lt "$first_open" ]; then
-        first_open=$opened_at
-      fi
       if [ "$key" = default ]; then
         line="$verb: $note"
       else
@@ -314,8 +298,6 @@ status_captain_relevant_summary() {  # <status-file>
 $open
 EOF
     while IFS= read -r line || [ -n "$line" ]; do
-      line_number=$((line_number + 1))
-      [ "$line_number" -gt "$first_open" ] || continue
       status_is_captain_relevant "$line" || continue
       verb=$(status_line_verb "$line")
       case "$verb" in needs-decision|blocked) continue ;; esac

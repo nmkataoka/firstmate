@@ -110,3 +110,4 @@ Behavior-test CI installs the capability-verified `tasks-axi` 0.2.2 release inst
 ## Maintenance rule
 
 Update this file in the same pull request as every upstream synchronization or fork-feature change.
+Keep upstream-sync validation fixes within the captain-approved synchronization scope, and defer unrelated findings to separate pull requests instead of expanding the sync branch.

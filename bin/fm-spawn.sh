@@ -245,7 +245,6 @@ fi
 ORCA_ABORT_CLEANUP=0
 ORCA_WORKTREE_ID=
 ORCA_TERMINAL=
-SPAWN_METADATA_ABORT_CLEANUP=0
 HERDR_PROJECTION_ABORT_CLEANUP=0
 HERDR_PROJECTION_ABORT_SESSION=
 HERDR_PROJECTION_ABORT_TASK_PANE=
@@ -274,69 +273,8 @@ parse_orca_worktree_result() {
   fi
 }
 
-spawn_task_artifact_cleanup() {
-  local token
-  if [ -n "${WT:-}" ] && [ -d "$WT" ]; then
-    rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
-      "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend" || true
-  fi
-  token=$(cat "$STATE/$ID.grok-turnend-token" 2>/dev/null || true)
-  case "$token" in
-    fm.????????????)
-      case "$token" in
-        *[!A-Za-z0-9._-]*) ;;
-        *) rm -f "${GROK_HOME:-$HOME/.grok}/hooks/fm-turn-end.d/$token" || true ;;
-      esac
-      ;;
-  esac
-  token=$(cat "$STATE/$ID.kimi-turnend-token" 2>/dev/null || true)
-  case "$token" in
-    fm.????????????)
-      case "$token" in
-        *[!A-Za-z0-9._-]*) ;;
-        *) rm -f "$HOME/.kimi-code/fm-turn-end.d/$token" || true ;;
-      esac
-      ;;
-  esac
-  rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.pi-ext.ts" \
-    "$STATE/$ID.grok-turnend-token" "$STATE/$ID.kimi-turnend-token" || true
-}
-
-spawn_metadata_failure_cleanup() {  # <projected-herdr-cleanup>
-  local projected_herdr_cleanup=$1
-  [ "$SPAWN_METADATA_ABORT_CLEANUP" = 1 ] || return 0
-  SPAWN_METADATA_ABORT_CLEANUP=0
-  case "$BACKEND" in
-    tmux)
-      [ -z "${WID:-}" ] || fm_backend_kill tmux "$WID" 2>/dev/null || true
-      ;;
-    herdr)
-      if [ "$projected_herdr_cleanup" != 1 ] && [ -n "${T:-}" ]; then
-        fm_backend_kill herdr "$T" 2>/dev/null || true
-      fi
-      ;;
-    zellij)
-      [ -z "${T:-}" ] || fm_backend_kill zellij "$T" "${ZELLIJ_TAB_ID:-}" "$W" 2>/dev/null || true
-      ;;
-    cmux)
-      [ -z "${T:-}" ] || fm_backend_kill cmux "$T" "" "$W" 2>/dev/null || true
-      ;;
-  esac
-  if [ "$BACKEND" != orca ]; then
-    if [ "$KIND" != secondmate ]; then
-      spawn_task_artifact_cleanup || true
-      if [ -n "${WT:-}" ] && [ -d "$WT" ]; then
-        if ! ( cd "$PROJ_ABS" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
-          echo "warning: failed to return worktree after metadata publication failure: $WT" >&2
-        fi
-      fi
-    fi
-    [ -z "${TASK_TMP:-}" ] || rm -rf "$TASK_TMP" || true
-  fi
-}
-
 spawn_abort_cleanup() {
-  local status=$? projected_herdr_cleanup=$HERDR_PROJECTION_ABORT_CLEANUP
+  local status=$?
   if [ "$HERDR_PROJECTION_ABORT_CLEANUP" = 1 ] \
      && [ "$HERDR_PRESENTATION_ORDER_LOCK_HELD" != 1 ]; then
     if ! spawn_herdr_presentation_order_lock_acquire "${HERDR_PROJECTION_ABORT_SESSION:-}"; then
@@ -361,10 +299,7 @@ spawn_abort_cleanup() {
       fm_backend_kill orca "$ORCA_TERMINAL" 2>/dev/null || true
     fi
     if [ -n "${ORCA_WORKTREE_ID:-}" ]; then
-      if fm_backend_remove_worktree orca "$ORCA_WORKTREE_ID" 2>/dev/null; then
-        spawn_task_artifact_cleanup || true
-        [ -z "${TASK_TMP:-}" ] || rm -rf "$TASK_TMP" || true
-      else
+      if ! fm_backend_remove_worktree orca "$ORCA_WORKTREE_ID" 2>/dev/null; then
         mkdir -p "$STATE" 2>/dev/null || true
         if [ -d "$STATE" ]; then
           {
@@ -386,7 +321,6 @@ spawn_abort_cleanup() {
       fi
     fi
   fi
-  spawn_metadata_failure_cleanup "$projected_herdr_cleanup" || true
   if [ "$SPAWN_TASK_LOCK_HELD" = 1 ]; then
     SPAWN_TASK_LOCK_HELD=0
     fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -1520,61 +1454,49 @@ fi
 META_WINDOW=$T
 [ "$BACKEND" = orca ] && META_WINDOW=$W
 write_task_metadata() {
-  local -a metadata
-  metadata=(
-    "window=$META_WINDOW"
-    "endpoint_task_id=$ID"
-    "worktree=$WT"
-    "project=$PROJ_ABS"
-    "harness=$HARNESS"
-    "kind=$KIND"
-    "mode=$MODE"
-    "yolo=$YOLO"
-    "tasktmp=$TASK_TMP"
-    "model=${MODEL:-default}"
-    "effort=${EFFORT:-default}"
-  )
+  echo "window=$META_WINDOW"
+  echo "endpoint_task_id=$ID"
+  echo "worktree=$WT"
+  echo "project=$PROJ_ABS"
+  echo "harness=$HARNESS"
+  echo "kind=$KIND"
+  echo "mode=$MODE"
+  echo "yolo=$YOLO"
+  echo "tasktmp=$TASK_TMP"
+  echo "model=${MODEL:-default}"
+  echo "effort=${EFFORT:-default}"
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;
   # data/fm-backend-design-d7's P1 compatibility contract).
-  [ "$BACKEND" = tmux ] || metadata+=("backend=$BACKEND")
+  [ "$BACKEND" = tmux ] || echo "backend=$BACKEND"
   if [ "$BACKEND" = herdr ]; then
-    metadata+=(
-      "herdr_session=$HERDR_SES"
-      "herdr_workspace_id=$HERDR_WORKSPACE_ID"
-      "herdr_tab_id=$HERDR_TAB_ID"
-      "herdr_pane_id=$HERDR_PANE_ID"
-    )
+    echo "herdr_session=$HERDR_SES"
+    echo "herdr_workspace_id=$HERDR_WORKSPACE_ID"
+    echo "herdr_tab_id=$HERDR_TAB_ID"
+    echo "herdr_pane_id=$HERDR_PANE_ID"
   fi
   if [ "$BACKEND" = zellij ]; then
-    metadata+=(
-      "zellij_session=$ZELLIJ_SES"
-      "zellij_tab_id=$ZELLIJ_TAB_ID"
-      "zellij_pane_id=$ZELLIJ_PANE_ID"
-    )
+    echo "zellij_session=$ZELLIJ_SES"
+    echo "zellij_tab_id=$ZELLIJ_TAB_ID"
+    echo "zellij_pane_id=$ZELLIJ_PANE_ID"
   fi
   if [ "$BACKEND" = orca ]; then
-    metadata+=("orca_worktree_id=$ORCA_WORKTREE_ID" "terminal=$ORCA_TERMINAL")
+    echo "orca_worktree_id=$ORCA_WORKTREE_ID"
+    echo "terminal=$ORCA_TERMINAL"
   fi
   if [ "$BACKEND" = cmux ]; then
-    metadata+=("cmux_workspace_id=$CMUX_WORKSPACE_ID" "cmux_surface_id=$CMUX_SURFACE_ID")
+    echo "cmux_workspace_id=$CMUX_WORKSPACE_ID"
+    echo "cmux_surface_id=$CMUX_SURFACE_ID"
   fi
   if [ "$KIND" = secondmate ]; then
-    metadata+=("home=$PROJ_ABS" "projects=$SECONDMATE_PROJECTS")
+    echo "home=$PROJ_ABS"
+    echo "projects=$SECONDMATE_PROJECTS"
   fi
-  printf '%s\n' "${metadata[@]}"
 }
-SPAWN_METADATA_ABORT_CLEANUP=1
-META_PENDING=$(mktemp "$STATE/.$ID.meta.XXXXXX") || {
-  echo "error: failed to publish task metadata: $STATE/$ID.meta" >&2
-  exit 1
-}
-if ! write_task_metadata > "$META_PENDING" || ! mv -f "$META_PENDING" "$STATE/$ID.meta"; then
-  rm -f "$META_PENDING"
+if ! write_task_metadata > "$STATE/$ID.meta"; then
   echo "error: failed to publish task metadata: $STATE/$ID.meta" >&2
   exit 1
 fi
-SPAWN_METADATA_ABORT_CLEANUP=0
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
 sq_brief=$(shell_quote "$BRIEF")

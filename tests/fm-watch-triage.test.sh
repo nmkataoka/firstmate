@@ -160,10 +160,6 @@ test_classifier_primitives() {
     && fail "FM_CAPTAIN_RE override bypassed working: suppression"
   FM_CAPTAIN_RE='checks green|custom-verb:' status_is_captain_relevant "paused: checks green pending approval" \
     && fail "FM_CAPTAIN_RE override bypassed paused: suppression"
-  FM_CLASSIFY_RESOLVE_VERB=closed status_is_captain_relevant "closed: PR merged" \
-    && fail "configured resolution verb was surfaced by legacy free-text matching"
-  FM_CLASSIFY_CAPTAIN_HELD_VERB=parked status_is_captain_relevant "parked: checks green pending captain" \
-    && fail "configured captain-held verb was surfaced by legacy free-text matching"
   FM_CAPTAIN_RE='custom-verb:' status_is_captain_relevant "custom-verb: x" \
     || fail "nonterminal suppression weakened custom bare-line behavior"
   printf 'needs-decision: should docs mention [key=prose]?\nneeds-decision [key=q1]: real choice\nresolved: docs still mention [key=q1]\nneeds-decision [key=bad key]: malformed\n' > "$state/keys.status"

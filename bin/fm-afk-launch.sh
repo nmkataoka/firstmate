@@ -70,18 +70,6 @@ if [ -n "${FM_STATE_OVERRIDE:-}" ]; then
       ;;
   esac
 fi
-if [ -n "${FM_CONFIG_OVERRIDE:-}" ]; then
-  case "$FM_CONFIG_OVERRIDE" in
-    /*) ;;
-    *)
-      FM_AFK_LAUNCH_CONFIG_INPUT=$FM_CONFIG_OVERRIDE
-      FM_CONFIG_OVERRIDE=$(CDPATH='' cd -- "$FM_AFK_LAUNCH_CONFIG_INPUT" 2>/dev/null && pwd -P) || {
-        echo "error: FM_CONFIG_OVERRIDE directory cannot be resolved: $FM_AFK_LAUNCH_CONFIG_INPUT" >&2
-        exit 1
-      }
-      ;;
-  esac
-fi
 FM_AFK_LAUNCH_STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 FM_AFK_LAUNCH_CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 FM_AFK_LAUNCH_RECORD="$FM_AFK_LAUNCH_STATE/.afk-daemon-terminal"

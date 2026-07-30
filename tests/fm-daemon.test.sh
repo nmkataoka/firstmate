@@ -938,22 +938,6 @@ test_classify_signal_surfaces_terminal_after_open_decision() {
   pass "classify_signal surfaces a new terminal event alongside an open decision"
 }
 
-test_open_decision_summary_ignores_older_terminal_events() {
-  local dir state summary
-  dir=$(make_supercase open-decision-historical-terminal)
-  state="$dir/state"
-  printf '%s\n' \
-    'failed: historical failure' \
-    'needs-decision [key=api]: choose API shape' \
-    'working: preparing evidence' > "$state/historical-terminal.status"
-  summary=$(status_captain_relevant_summary "$state/historical-terminal.status")
-  assert_contains "$summary" "needs-decision [key=api]: choose API shape" \
-    "open decision was omitted from its captain summary"
-  assert_not_contains "$summary" "historical failure" \
-    "terminal event predating the open decision leaked into its captain summary"
-  pass "open decision summaries ignore captain-relevant terminal history that predates the decision"
-}
-
 test_handle_wake_escalates_actionable_stale_context() {
   local dir state win key
   dir=$(make_supercase stale-actionable-context)
@@ -966,24 +950,6 @@ test_handle_wake_escalates_actionable_stale_context() {
     || fail "actionable Herdr context without a status entry was not escalated"
   [ ! -e "$state/.subsuper-stale-$key" ] || fail "actionable Herdr context was tracked as a transient stale"
   pass "handle_wake preserves the exact stale target while escalating separate actionable context"
-}
-
-test_handle_wake_escalates_fresh_context_after_seen_status() {
-  local dir state win key context
-  dir=$(make_supercase stale-fresh-context-after-seen-status)
-  state="$dir/state"
-  win="default:w1:p3"
-  key=$(printf '%s' "herdr-seen-status" | tr ':/.' '___')
-  context="herdr: agent blocked - approval required"
-  fm_write_meta "$state/herdr-seen-status.meta" "window=$win" "backend=herdr"
-  printf 'done: PR https://x/y/pull/12\n' > "$state/herdr-seen-status.status"
-  printf 'done: PR https://x/y/pull/12' > "$state/.subsuper-seen-status-$key"
-  FM_STATE_OVERRIDE="$state" handle_wake "stale: $win"$'\t'"$context" "$state"
-  grep -F "$context" "$state/.subsuper-escalations" >/dev/null \
-    || fail "fresh actionable Herdr context was suppressed by an already-seen status"
-  [ ! -e "$state/.subsuper-stale-$key" ] \
-    || fail "fresh actionable Herdr context after a seen status was tracked as transient"
-  pass "fresh actionable Herdr context survives independent status dedupe"
 }
 
 test_classify_stale_dedup_against_signal() {
@@ -1890,9 +1856,7 @@ test_tmux_composer_state_requires_matching_box_borders
 test_pane_input_pending_honors_idle_override_after_border_strip
 test_classify_signal_dedup_against_scan
 test_classify_signal_surfaces_terminal_after_open_decision
-test_open_decision_summary_ignores_older_terminal_events
 test_handle_wake_escalates_actionable_stale_context
-test_handle_wake_escalates_fresh_context_after_seen_status
 test_classify_stale_dedup_against_signal
 test_afk_nonterminal_working_merged_keeps_wedge_aging
 test_afk_genuine_done_still_terminal_stale

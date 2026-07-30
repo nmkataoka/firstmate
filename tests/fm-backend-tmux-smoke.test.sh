@@ -56,13 +56,12 @@ fm_backend_source tmux || fail "fm_backend_source tmux failed"
 SESSION="smoke"
 WINDOW="fm-smoke1"
 TARGET="$SESSION:$WINDOW"
-WID=
 
 # --- create session ----------------------------------------------------------
 
 tmux new-session -d -s "$SESSION" -x 200 -y 50 \
   || fail "real tmux: new-session failed"
-WID=$(fm_backend_tmux_create_task "$SESSION" "$WINDOW" "$HOME") \
+fm_backend_tmux_create_task "$SESSION" "$WINDOW" "$HOME" \
   || fail "fm_backend_tmux_create_task failed to create the task window"
 tmux list-windows -t "$SESSION" -F '#{window_name}' | grep -qx "$WINDOW" \
   || fail "created window is not visible in the real session"
@@ -159,7 +158,7 @@ pass "real tmux: fm_backend_tmux_resolve_bare_selector fails for a window that d
 
 # --- kill and recovery-grade missing-window classification ------------------
 
-fm_backend_tmux_kill "$WID"
+fm_backend_tmux_kill "$TARGET"
 if tmux list-windows -t "$SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW"; then
   fail "fm_backend_tmux_kill did not remove the window"
 fi

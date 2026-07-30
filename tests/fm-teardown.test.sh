@@ -1367,16 +1367,14 @@ test_herdr_projection_teardown_retains_journal_when_close_unconfirmed() {
 
   FM_FAKE_HERDR_LOG="$log" FM_FAKE_HERDR_CLOSED="$closed" FM_FAKE_HERDR_RESTORED="$restored" FM_FAKE_HERDR_CLOSE_FAIL=1 \
     run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" \
-    && fail "herdr-projection-unconfirmed-close: teardown retired an unconfirmed endpoint"
+    || fail "herdr-projection-unconfirmed-close: teardown should preserve best-effort endpoint semantics"
   [ -e "$case_dir/state/task-x1.herdr-presentation" ] \
     || fail "unconfirmed task-pane close incorrectly retired the presentation journal"
-  [ -e "$case_dir/state/task-x1.meta" ] \
-    || fail "unconfirmed task-pane close incorrectly retired recovery metadata"
   assert_grep "close could not be confirmed" "$case_dir/stderr" \
     "unconfirmed projected close did not explain why the journal was retained"
   assert_not_contains "$(cat "$log")" "workspace close" \
     "unconfirmed projected close must not escalate to workspace cleanup"
-  pass "herdr projection teardown preserves recovery state when exact-pane close is unconfirmed"
+  pass "herdr projection teardown retains the stale journal and attempts no workspace cleanup when exact-pane close is unconfirmed"
 }
 
 test_local_only_fork_remote_allows

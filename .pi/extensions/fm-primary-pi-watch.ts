@@ -383,7 +383,6 @@ export default function (pi: ExtensionAPI) {
     let readinessSettled = false;
     let resolveReadiness: (ready: boolean) => void = () => {};
     let resolveClosed: () => void = () => {};
-    let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
     const readiness = new Promise<boolean>((resolveReady) => {
       resolveReadiness = resolveReady;
     });
@@ -400,12 +399,6 @@ export default function (pi: ExtensionAPI) {
     const observeEstablishedArm = (): void => {
       if (/^watcher: (?:started|attached)\b/m.test(`${stdout}\n${stderr}`)) {
         settleReadiness(true);
-        if (!stabilityTimer) {
-          stabilityTimer = setTimeout(() => {
-            if (generationIsLive(owner) && owner.child === armChild) owner.retryFailures = 0;
-          }, retryMaxMs);
-          stabilityTimer.unref();
-        }
       }
     };
     const releaseChild = (): void => {
@@ -422,7 +415,6 @@ export default function (pi: ExtensionAPI) {
     armChild.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
       if (settled) return;
       settled = true;
-      if (stabilityTimer) clearTimeout(stabilityTimer);
       resolveClosed();
       settleReadiness(false);
       releaseChild();
@@ -433,24 +425,12 @@ export default function (pi: ExtensionAPI) {
         owner.retryFailures = 0;
         owner.restoring = true;
         void (async () => {
-          let failure = "";
-          try {
-            failure = await restoreAfterActionableClose(owner, predecessor);
-          } catch (error) {
-            if (generationIsLive(owner)) {
-              surfaceFailure(owner, `watcher: FAILED - Pi continuity restoration rejected: ${String((error as Error)?.message ?? error)}`);
-            }
-            return;
-          } finally {
-            if (generationIsLive(owner)) owner.restoring = false;
-          }
+          const failure = await restoreAfterActionableClose(owner, predecessor);
+          if (generationIsLive(owner)) owner.restoring = false;
           if (!generationIsLive(owner)) return;
           const message = failure ? `${classification.message}\n\n${failure}` : classification.message;
           await sendWake(owner, message);
-        })().catch((error) => {
-          if (generationIsLive(owner)) {
-            surfaceFailure(owner, `watcher: FAILED - Pi wake delivery rejected: ${String((error as Error)?.message ?? error)}`);
-          }
+        })().catch(() => {
         });
         return;
       }
@@ -460,7 +440,6 @@ export default function (pi: ExtensionAPI) {
     armChild.on("error", (error: Error) => {
       if (settled) return;
       settled = true;
-      if (stabilityTimer) clearTimeout(stabilityTimer);
       resolveClosed();
       settleReadiness(false);
       releaseChild();
