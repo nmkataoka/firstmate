@@ -53,7 +53,7 @@ Known trigger quirk (observed 2026-07-10): if `axi run` fails with `no run start
 This second review is part of the standard initial round for every PR, not an optional extra.
 Launch one INDEPENDENT fresh-context reviewer whose only inputs are the PR/diff and the tier's prompt.
 The operator owns configuring reviewer 2 so its harness/model pairing differs from whichever agent/model reviewer 1 uses; this procedure deliberately does not preflight either mutable config.
-Run `FM/bin/fm-review-launch.sh <tier> <pr-number> --print` from the worktree root to get the verified launch commands, then run ONLY the printed claude command, capturing its stdout verbatim to a file in your worktree tmp (do not summarize it before saving).
+Run the home-bound `fm-review-launch.sh <tier> <pr-number> --print` command from your brief from the worktree root to get the verified launch commands, then run ONLY the printed claude command, capturing its stdout verbatim to a file in your worktree tmp (do not summarize it before saving).
 Do not run the printed codex command as another review round.
 Reviewer model, effort, launch flags, and the per-repo guideline links baked into the prompt come from the firstmate home's local `config/review.env` when present, with the verified defaults otherwise (format and defaults in the script header).
 If the launch fails because a flag does not exist, report it instead of guessing at replacements.
@@ -80,7 +80,7 @@ Past that, fix what is clearly real, list everything else as rejected/deferred i
 
 This pass is strictly sequenced after stages 1-2 and their fixes; it is never a parallel third reviewer.
 Run one fresh-context claude reviewer over the final branch diff with the prompt in `FM/crew/review/tests-and-comments.md` (adapted to the branch/PR diff rather than staged changes).
-Use the claude launch mechanics from `fm-review-launch.sh --print` (substitute the adapted prompt).
+Use the claude launch mechanics from the same home-bound `fm-review-launch.sh --print` command in your brief (substitute the adapted prompt).
 Triage and apply the same way.
 
 ## Finish

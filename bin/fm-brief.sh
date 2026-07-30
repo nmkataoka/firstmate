@@ -136,6 +136,11 @@ if [ -n "$REVIEW_TIER" ]; then
     full|simple) : ;;
     *) echo "error: invalid review tier '$REVIEW_TIER' (use full or simple)" >&2; exit 1 ;;
   esac
+  if [ -n "${FM_CONFIG_OVERRIDE:-}" ]; then
+    CONFIG=$(resolve_directory_input FM_CONFIG_OVERRIDE "$FM_CONFIG_OVERRIDE") || exit 1
+  else
+    CONFIG="$FM_HOME/config"
+  fi
 fi
 
 BRIEF="$DATA/$ID/brief.md"
@@ -149,6 +154,11 @@ shell_quote() {
 }
 
 STATUS_FILE=$(shell_quote "$STATE/$ID.status")
+if [ -n "$REVIEW_TIER" ]; then
+  REVIEW_HOME_ARG=$(shell_quote "$FM_HOME")
+  REVIEW_CONFIG_ARG=$(shell_quote "$CONFIG")
+  REVIEW_LAUNCH_ARG=$(shell_quote "$FM_ROOT/bin/fm-review-launch.sh")
+fi
 
 if [ "$KIND" = secondmate ]; then
 SECONDMATE_PROJECTS=""
@@ -346,6 +356,7 @@ The captain reviews and merges the PR; firstmate relays it.
 # Post-implementation review
 Firstmate has set the review tier for this task: TIER=\`$REVIEW_TIER\`.
 Follow the review procedure at \`$FM_ROOT/crew/review/review-procedure.md\` exactly, with FM=\`$FM_ROOT\` and the tier above.
+Whenever it invokes the reviewer launcher, use this home-bound prefix exactly: \`FM_HOME=$REVIEW_HOME_ARG FM_CONFIG_OVERRIDE=$REVIEW_CONFIG_ARG $REVIEW_LAUNCH_ARG\`.
 Use the PR-description guidance it references when you open the PR.
 The Finish section of the procedure defines the done report for this task: \`done: PR {url}\` plus a one-line note of any rejected findings.
 EOF

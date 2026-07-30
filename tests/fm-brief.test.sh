@@ -668,6 +668,8 @@ test_review_flag_direct_pr() {
   assert_grep "$ROOT/crew/review/review-procedure.md" "$brief" \
     "review brief does not point at the tracked crew procedure by absolute path"
   assert_grep "FM=\`$ROOT\`" "$brief" "review brief does not state the FM root for the procedure"
+  assert_grep "FM_HOME='$home' FM_CONFIG_OVERRIDE='$home/config' '$ROOT/bin/fm-review-launch.sh'" "$brief" \
+    "review brief does not bind the reviewer launcher to its originating home"
   assert_grep "one-line note of any rejected findings" "$brief" \
     "review brief lost the review-shaped done report"
   assert_grep "review-only pipeline run the procedure itself specifies" "$brief" \
@@ -679,6 +681,30 @@ test_review_flag_direct_pr() {
     || fail "fm-brief.sh --review=simple on a direct-PR project should succeed"
   assert_grep "TIER=\`simple\`" "$home/data/$id/brief.md" "simple-tier brief does not pin its tier"
   pass "fm-brief.sh: --review briefs carry tier, procedure path, and done contract"
+}
+
+test_review_flag_preserves_config_override() {
+  local home config brief relative_config relative_config_abs
+  home="$TMP_ROOT/review-config-home"
+  config="$TMP_ROOT/review-config-source"
+  mkdir -p "$config"
+  write_registry "$home"
+  FM_HOME="$home" FM_CONFIG_OVERRIDE="$config" \
+    "$ROOT/bin/fm-brief.sh" brief-review-config direct-proj --review=simple >/dev/null 2>&1 \
+    || fail "fm-brief.sh should accept an explicit review config directory"
+  brief="$home/data/brief-review-config/brief.md"
+  assert_grep "FM_HOME='$home' FM_CONFIG_OVERRIDE='$config' '$ROOT/bin/fm-review-launch.sh'" "$brief" \
+    "review brief did not preserve its explicit config owner"
+  relative_config=review-config-relative
+  mkdir -p "$TMP_ROOT/$relative_config"
+  relative_config_abs=$(CDPATH='' cd -- "$TMP_ROOT/$relative_config" && pwd -P)
+  (cd "$TMP_ROOT" && FM_HOME="$home" FM_CONFIG_OVERRIDE="$relative_config" \
+    "$ROOT/bin/fm-brief.sh" brief-review-config-relative direct-proj --review=simple >/dev/null 2>&1) \
+    || fail "fm-brief.sh should resolve a relative review config directory"
+  brief="$home/data/brief-review-config-relative/brief.md"
+  assert_grep "FM_CONFIG_OVERRIDE='$relative_config_abs'" "$brief" \
+    "review brief did not canonicalize its explicit config owner"
+  pass "fm-brief.sh: --review binds the originating home and config"
 }
 
 # --review must refuse everything outside its verified surface: a missing or
@@ -700,6 +726,10 @@ test_review_flag_refusals() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d4 nomistakes-proj --review=simple >/dev/null 2>&1; status=$?
   expect_code 1 "$status" "--review on a non-direct-PR project should be refused"
   assert_absent "$home/data/brief-review-d4" "mode refusal left a stray data/<id>/ dir behind"
+  (cd "$TMP_ROOT" && FM_HOME="$home" FM_CONFIG_OVERRIDE=missing-review-config \
+    "$ROOT/bin/fm-brief.sh" brief-review-d6 direct-proj --review=simple >/dev/null 2>&1); status=$?
+  expect_code 1 "$status" "--review with an unresolved config owner should be refused"
+  assert_absent "$home/data/brief-review-d6" "config refusal left a stray data/<id>/ dir behind"
   pass "fm-brief.sh: --review refusals cover tier, kind, and delivery mode"
 }
 
@@ -750,5 +780,6 @@ test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
 test_resolution_verb_override_renders_all_brief_scaffolds
 test_review_flag_direct_pr
+test_review_flag_preserves_config_override
 test_review_flag_refusals
 test_ship_screenshot_guidance
