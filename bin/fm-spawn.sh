@@ -1453,7 +1453,7 @@ fi
 
 META_WINDOW=$T
 [ "$BACKEND" = orca ] && META_WINDOW=$W
-write_task_metadata() {
+{
   echo "window=$META_WINDOW"
   echo "endpoint_task_id=$ID"
   echo "worktree=$WT"
@@ -1492,11 +1492,7 @@ write_task_metadata() {
     echo "home=$PROJ_ABS"
     echo "projects=$SECONDMATE_PROJECTS"
   fi
-}
-if ! write_task_metadata > "$STATE/$ID.meta"; then
-  echo "error: failed to publish task metadata: $STATE/$ID.meta" >&2
-  exit 1
-fi
+} > "$STATE/$ID.meta"
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
 sq_brief=$(shell_quote "$BRIEF")

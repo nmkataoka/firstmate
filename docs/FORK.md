@@ -67,7 +67,7 @@ The watcher and away daemon classify the authoritative keyed-decision fold, reta
 
 Fleet snapshots clear single-owner open decisions only after an explicit working, done, or failed lifecycle state, so an inconclusive run-step cannot hide a captain decision.
 
-- Files touched: `bin/fm-fleet-snapshot.sh` and `tests/fm-fleet-snapshot-view.test.sh`.
+- Files touched: `.github/workflows/ci.yml`, `bin/fm-fleet-snapshot.sh`, and `tests/fm-fleet-snapshot-view.test.sh`.
 - Upstream status: fork-only review fix with no equivalent in `upstream/main` at `daf6dce`.
 
 ### Pending AFK delivery across daemon restarts
@@ -90,11 +90,6 @@ Behavior-test CI installs the capability-verified `tasks-axi` 0.2.2 release inst
 
 - Files touched: `.github/workflows/ci.yml` and `tests/fm-lint.test.sh`.
 - Upstream status: fork-only review fix with no equivalent in `upstream/main` at `daf6dce`.
-
-## Repairs added during the 2026-07-29 sync
-
-- `bin/fm-spawn.sh` now fails closed and runs backend cleanup when task metadata publication fails under stock macOS Bash 3.2; upstream's compound-command redirection continued after the failure on Bash 3.2.
-- `tests/fm-session-start.test.sh` derives concurrent contender identities without `BASHPID`, which stock macOS Bash 3.2 does not provide.
 
 ## Dropped at the 2026-07-29 sync
 

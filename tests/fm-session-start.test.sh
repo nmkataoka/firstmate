@@ -679,7 +679,7 @@ EOF
 }
 
 test_session_lock_concurrent_single_winner() {
-  local rec root home fakebin ready completed winners pids i pid pid_probe count
+  local rec root home fakebin ready completed winners pids i pid count
   rec=$(new_world lock-concurrency)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -723,11 +723,7 @@ SH
   i=1
   while [ "$i" -le 40 ]; do
     (
-      # Bash 3.2 does not expose BASHPID. Ask a short-lived direct child for
-      # its PPID so the contender records this asynchronous subshell's pid.
-      pid_probe="$home/contender-pid-$i"
-      sh -c 'printf "%s\n" "$PPID" > "$1"' sh "$pid_probe"
-      harness_pid=$(cat "$pid_probe")
+      harness_pid=$BASHPID
       : > "$home/state/harness-$harness_pid"
       : > "$ready/$i"
       while [ "$(find "$ready" -type f | wc -l | tr -d ' ')" -lt 40 ]; do
