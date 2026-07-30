@@ -596,7 +596,7 @@ test_metadata_writer_propagates_output_failure() {
 test_metadata_publication_is_atomic() {
   local rec id out status meta cleanup_log
   id=profile-metadata-atomic-z8d
-  rec=$(make_spawn_case profile-metadata-atomic codex "$id")
+  rec=$(make_spawn_case profile-metadata-atomic claude "$id")
   read_case_record "$rec"
   meta="$HOME_DIR/state/$id.meta"
   cleanup_log="$CASE_DIR/cleanup.log"
@@ -615,7 +615,52 @@ test_metadata_publication_is_atomic() {
     "metadata rename failure did not remove the exact created tmux window"
   assert_grep "treehouse <return> <--force> <$WT_DIR>" "$cleanup_log" \
     "metadata rename failure did not return the exact leased worktree"
+  assert_absent "$WT_DIR/.claude/settings.local.json" \
+    "metadata rename failure retained its worktree hook"
+  assert_absent "/tmp/fm-$id" "metadata rename failure retained its task temp root"
   pass "metadata publication is atomic and cleans failed pending files"
+}
+
+test_metadata_failure_cleanup_removes_task_artifacts() {
+  local source case_dir state worktree task_tmp test_home grok_home grok_token kimi_token
+  source=$(sed -n '/^spawn_task_artifact_cleanup()/,/^}/p' "$SPAWN")
+  case_dir="$TMP_ROOT/metadata-artifact-cleanup"
+  state="$case_dir/state"
+  worktree="$case_dir/worktree"
+  task_tmp="$case_dir/task-tmp"
+  test_home="$case_dir/home"
+  grok_home="$case_dir/grok-home"
+  grok_token=fm.abcdefghijkl
+  kimi_token=fm.mnopqrstuvwx
+  mkdir -p "$state" "$worktree/.claude" "$worktree/.opencode/plugins" \
+    "$task_tmp/gotmp" "$grok_home/hooks/fm-turn-end.d" \
+    "$test_home/.kimi-code/fm-turn-end.d"
+  touch "$worktree/.claude/settings.local.json" "$worktree/.opencode/plugins/fm-turn-end.js" \
+    "$worktree/.fm-grok-turnend" "$worktree/.fm-kimi-turnend" \
+    "$state/task.turn-ended" "$state/task.pi-ext.ts" \
+    "$grok_home/hooks/fm-turn-end.d/$grok_token" \
+    "$test_home/.kimi-code/fm-turn-end.d/$kimi_token"
+  printf '%s\n' "$grok_token" > "$state/task.grok-turnend-token"
+  printf '%s\n' "$kimi_token" > "$state/task.kimi-turnend-token"
+
+  ARTIFACT_CLEANUP_SOURCE="$source" STATE="$state" WT="$worktree" ID=task \
+    TASK_TMP="$task_tmp" HOME="$test_home" GROK_HOME="$grok_home" bash -c '
+      eval "$ARTIFACT_CLEANUP_SOURCE"
+      spawn_task_artifact_cleanup
+    '
+
+  assert_absent "$worktree/.claude/settings.local.json" "cleanup retained the Claude hook"
+  assert_absent "$worktree/.opencode/plugins/fm-turn-end.js" "cleanup retained the OpenCode hook"
+  assert_absent "$worktree/.fm-grok-turnend" "cleanup retained the Grok pointer"
+  assert_absent "$worktree/.fm-kimi-turnend" "cleanup retained the Kimi pointer"
+  assert_absent "$state/task.turn-ended" "cleanup retained the turn-end signal"
+  assert_absent "$state/task.pi-ext.ts" "cleanup retained the Pi extension"
+  assert_absent "$state/task.grok-turnend-token" "cleanup retained the Grok token pointer"
+  assert_absent "$state/task.kimi-turnend-token" "cleanup retained the Kimi token pointer"
+  assert_absent "$grok_home/hooks/fm-turn-end.d/$grok_token" "cleanup retained the Grok auth token"
+  assert_absent "$test_home/.kimi-code/fm-turn-end.d/$kimi_token" "cleanup retained the Kimi auth token"
+  assert_absent "$task_tmp" "cleanup retained the task temp root"
+  pass "metadata failure cleanup removes task-scoped spawn artifacts"
 }
 
 test_metadata_failure_cleanup_targets_each_backend_exactly() {
@@ -634,6 +679,7 @@ test_metadata_failure_cleanup_targets_each_backend_exactly() {
       printf " <%s>" "$@" >> "$CLEANUP_LOG"
       printf "\n" >> "$CLEANUP_LOG"
     }
+    spawn_task_artifact_cleanup() { :; }
     treehouse() {
       printf "treehouse" >> "$CLEANUP_LOG"
       printf " <%s>" "$@" >> "$CLEANUP_LOG"
@@ -802,6 +848,7 @@ test_pi_signed_threads_shared_pi_profile_and_preserves_identity
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_metadata_writer_propagates_output_failure
 test_metadata_publication_is_atomic
+test_metadata_failure_cleanup_removes_task_artifacts
 test_metadata_failure_cleanup_targets_each_backend_exactly
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags

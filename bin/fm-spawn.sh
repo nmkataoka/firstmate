@@ -274,6 +274,35 @@ parse_orca_worktree_result() {
   fi
 }
 
+spawn_task_artifact_cleanup() {
+  local token
+  if [ -n "${WT:-}" ] && [ -d "$WT" ]; then
+    rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
+      "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
+  fi
+  token=$(cat "$STATE/$ID.grok-turnend-token" 2>/dev/null || true)
+  case "$token" in
+    fm.????????????)
+      case "$token" in
+        *[!A-Za-z0-9._-]*) ;;
+        *) rm -f "${GROK_HOME:-$HOME/.grok}/hooks/fm-turn-end.d/$token" ;;
+      esac
+      ;;
+  esac
+  token=$(cat "$STATE/$ID.kimi-turnend-token" 2>/dev/null || true)
+  case "$token" in
+    fm.????????????)
+      case "$token" in
+        *[!A-Za-z0-9._-]*) ;;
+        *) rm -f "$HOME/.kimi-code/fm-turn-end.d/$token" ;;
+      esac
+      ;;
+  esac
+  rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.pi-ext.ts" \
+    "$STATE/$ID.grok-turnend-token" "$STATE/$ID.kimi-turnend-token"
+  [ -z "${TASK_TMP:-}" ] || rm -rf "$TASK_TMP"
+}
+
 spawn_metadata_failure_cleanup() {  # <projected-herdr-cleanup>
   local projected_herdr_cleanup=$1
   [ "$SPAWN_METADATA_ABORT_CLEANUP" = 1 ] || return 0
@@ -294,10 +323,12 @@ spawn_metadata_failure_cleanup() {  # <projected-herdr-cleanup>
       [ -z "${T:-}" ] || fm_backend_kill cmux "$T" "" "$W" 2>/dev/null || true
       ;;
   esac
-  if [ "$BACKEND" != orca ] && [ "$KIND" != secondmate ] \
-     && [ -n "${WT:-}" ] && [ -d "$WT" ]; then
-    if ! ( cd "$PROJ_ABS" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
-      echo "warning: failed to return worktree after metadata publication failure: $WT" >&2
+  if [ "$BACKEND" != orca ]; then
+    spawn_task_artifact_cleanup
+    if [ "$KIND" != secondmate ] && [ -n "${WT:-}" ] && [ -d "$WT" ]; then
+      if ! ( cd "$PROJ_ABS" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
+        echo "warning: failed to return worktree after metadata publication failure: $WT" >&2
+      fi
     fi
   fi
 }
