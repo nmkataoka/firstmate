@@ -245,6 +245,7 @@ fi
 ORCA_ABORT_CLEANUP=0
 ORCA_WORKTREE_ID=
 ORCA_TERMINAL=
+SPAWN_METADATA_ABORT_CLEANUP=0
 HERDR_PROJECTION_ABORT_CLEANUP=0
 HERDR_PROJECTION_ABORT_SESSION=
 HERDR_PROJECTION_ABORT_TASK_PANE=
@@ -273,8 +274,36 @@ parse_orca_worktree_result() {
   fi
 }
 
+spawn_metadata_failure_cleanup() {  # <projected-herdr-cleanup>
+  local projected_herdr_cleanup=$1
+  [ "$SPAWN_METADATA_ABORT_CLEANUP" = 1 ] || return 0
+  SPAWN_METADATA_ABORT_CLEANUP=0
+  case "$BACKEND" in
+    tmux)
+      [ -z "${WID:-}" ] || fm_backend_kill tmux "$WID" 2>/dev/null || true
+      ;;
+    herdr)
+      if [ "$projected_herdr_cleanup" != 1 ] && [ -n "${T:-}" ]; then
+        fm_backend_kill herdr "$T" 2>/dev/null || true
+      fi
+      ;;
+    zellij)
+      [ -z "${T:-}" ] || fm_backend_kill zellij "$T" "${ZELLIJ_TAB_ID:-}" "$W" 2>/dev/null || true
+      ;;
+    cmux)
+      [ -z "${T:-}" ] || fm_backend_kill cmux "$T" "" "$W" 2>/dev/null || true
+      ;;
+  esac
+  if [ "$BACKEND" != orca ] && [ "$KIND" != secondmate ] \
+     && [ -n "${WT:-}" ] && [ -d "$WT" ]; then
+    if ! ( cd "$PROJ_ABS" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
+      echo "warning: failed to return worktree after metadata publication failure: $WT" >&2
+    fi
+  fi
+}
+
 spawn_abort_cleanup() {
-  local status=$?
+  local status=$? projected_herdr_cleanup=$HERDR_PROJECTION_ABORT_CLEANUP
   if [ "$HERDR_PROJECTION_ABORT_CLEANUP" = 1 ] \
      && [ "$HERDR_PRESENTATION_ORDER_LOCK_HELD" != 1 ]; then
     if ! spawn_herdr_presentation_order_lock_acquire "${HERDR_PROJECTION_ABORT_SESSION:-}"; then
@@ -321,6 +350,7 @@ spawn_abort_cleanup() {
       fi
     fi
   fi
+  spawn_metadata_failure_cleanup "$projected_herdr_cleanup"
   if [ "$SPAWN_TASK_LOCK_HELD" = 1 ]; then
     SPAWN_TASK_LOCK_HELD=0
     fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -1498,6 +1528,7 @@ write_task_metadata() {
   fi
   printf '%s\n' "${metadata[@]}"
 }
+SPAWN_METADATA_ABORT_CLEANUP=1
 META_PENDING=$(mktemp "$STATE/.$ID.meta.XXXXXX") || {
   echo "error: failed to publish task metadata: $STATE/$ID.meta" >&2
   exit 1
@@ -1507,6 +1538,7 @@ if ! write_task_metadata > "$META_PENDING" || ! mv -f "$META_PENDING" "$STATE/$I
   echo "error: failed to publish task metadata: $STATE/$ID.meta" >&2
   exit 1
 fi
+SPAWN_METADATA_ABORT_CLEANUP=0
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
 sq_brief=$(shell_quote "$BRIEF")

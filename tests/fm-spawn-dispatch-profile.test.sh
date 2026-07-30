@@ -25,7 +25,16 @@ esac
 case "${1:-}" in
   display-message) printf 'firstmate\n'; exit 0 ;;
   list-windows) exit 0 ;;
-  has-session|new-session|new-window|kill-window) exit 0 ;;
+  has-session|new-session) exit 0 ;;
+  new-window) printf '@42\n'; exit 0 ;;
+  kill-window)
+    if [ -n "${FM_FAKE_CLEANUP_LOG:-}" ]; then
+      printf 'tmux' >> "$FM_FAKE_CLEANUP_LOG"
+      printf ' <%s>' "$@" >> "$FM_FAKE_CLEANUP_LOG"
+      printf '\n' >> "$FM_FAKE_CLEANUP_LOG"
+    fi
+    exit 0
+    ;;
   send-keys)
     if [ -n "${FM_FAKE_LAUNCH_LOG:-}" ]; then
       prev=
@@ -53,7 +62,18 @@ fi
 exec /bin/mv "$@"
 SH
   chmod +x "$fakebin/mv"
-  fm_fake_exit0 "$fakebin" treehouse pi-signed
+  cat > "$fakebin/treehouse" <<'SH'
+#!/usr/bin/env bash
+set -u
+if [ -n "${FM_FAKE_CLEANUP_LOG:-}" ]; then
+  printf 'treehouse' >> "$FM_FAKE_CLEANUP_LOG"
+  printf ' <%s>' "$@" >> "$FM_FAKE_CLEANUP_LOG"
+  printf '\n' >> "$FM_FAKE_CLEANUP_LOG"
+fi
+exit 0
+SH
+  chmod +x "$fakebin/treehouse"
+  fm_fake_exit0 "$fakebin" pi-signed
   printf '%s\n' "$fakebin"
 }
 
@@ -574,13 +594,14 @@ test_metadata_writer_propagates_output_failure() {
 }
 
 test_metadata_publication_is_atomic() {
-  local rec id out status meta
+  local rec id out status meta cleanup_log
   id=profile-metadata-atomic-z8d
   rec=$(make_spawn_case profile-metadata-atomic codex "$id")
   read_case_record "$rec"
   meta="$HOME_DIR/state/$id.meta"
+  cleanup_log="$CASE_DIR/cleanup.log"
 
-  out=$(FM_FAKE_META_MV_FAIL_DEST="$meta" \
+  out=$(FM_FAKE_META_MV_FAIL_DEST="$meta" FM_FAKE_CLEANUP_LOG="$cleanup_log" \
     run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
   status=$?
   expect_code 1 "$status" "metadata rename failure should refuse the spawn"
@@ -590,7 +611,65 @@ test_metadata_publication_is_atomic() {
   [ -z "$(find "$HOME_DIR/state" -name ".$id.meta.*" -print -quit)" ] \
     || fail "metadata rename failure retained its pending file"
   [ ! -s "$LAUNCH_LOG" ] || fail "metadata rename failure typed a launch command"
+  assert_grep 'tmux <kill-window> <-t> <@42>' "$cleanup_log" \
+    "metadata rename failure did not remove the exact created tmux window"
+  assert_grep "treehouse <return> <--force> <$WT_DIR>" "$cleanup_log" \
+    "metadata rename failure did not return the exact leased worktree"
   pass "metadata publication is atomic and cleans failed pending files"
+}
+
+test_metadata_failure_cleanup_targets_each_backend_exactly() {
+  local source case_dir project worktree log output
+  source=$(sed -n '/^spawn_metadata_failure_cleanup()/,/^}/p' "$SPAWN")
+  case_dir="$TMP_ROOT/metadata-backend-cleanup"
+  project="$case_dir/project"
+  worktree="$case_dir/worktree"
+  log="$case_dir/cleanup.log"
+  mkdir -p "$project" "$worktree"
+
+  output=$(META_CLEANUP_SOURCE="$source" CLEANUP_LOG="$log" PROJECT="$project" WORKTREE="$worktree" bash -c '
+    eval "$META_CLEANUP_SOURCE"
+    fm_backend_kill() {
+      printf "kill" >> "$CLEANUP_LOG"
+      printf " <%s>" "$@" >> "$CLEANUP_LOG"
+      printf "\n" >> "$CLEANUP_LOG"
+    }
+    treehouse() {
+      printf "treehouse" >> "$CLEANUP_LOG"
+      printf " <%s>" "$@" >> "$CLEANUP_LOG"
+      printf "\n" >> "$CLEANUP_LOG"
+    }
+    run_cleanup() {
+      : > "$CLEANUP_LOG"
+      BACKEND=$1
+      KIND=${2:-ship}
+      SPAWN_METADATA_ABORT_CLEANUP=1
+      PROJ_ABS=$PROJECT WT=$WORKTREE W=fm-task WID=@42 T=session:pane ZELLIJ_TAB_ID=7
+      spawn_metadata_failure_cleanup "${3:-0}"
+      printf "%s=%s\n" "${4:-$BACKEND}" "$(tr "\n" ";" < "$CLEANUP_LOG")"
+    }
+    run_cleanup tmux
+    run_cleanup herdr
+    run_cleanup herdr ship 1 herdr-projected
+    run_cleanup zellij
+    run_cleanup cmux
+    run_cleanup tmux secondmate 0 tmux-secondmate
+  ')
+  assert_contains "$output" 'tmux=kill <tmux> <@42>;treehouse <return> <--force>' \
+    "tmux metadata cleanup did not use its stable window id and exact worktree"
+  assert_contains "$output" 'herdr=kill <herdr> <session:pane>;treehouse <return> <--force>' \
+    "flat Herdr metadata cleanup did not use its exact pane target"
+  assert_contains "$output" 'herdr-projected=treehouse <return> <--force>' \
+    "projected Herdr metadata cleanup duplicated its exact projection cleanup"
+  assert_contains "$output" 'zellij=kill <zellij> <session:pane> <7> <fm-task>;treehouse <return> <--force>' \
+    "Zellij metadata cleanup did not bind its exact tab and label"
+  assert_contains "$output" 'cmux=kill <cmux> <session:pane> <> <fm-task>;treehouse <return> <--force>' \
+    "cmux metadata cleanup did not bind its exact workspace and label"
+  assert_contains "$output" 'tmux-secondmate=kill <tmux> <@42>;' \
+    "secondmate metadata cleanup did not remove its exact endpoint"
+  assert_not_contains "$output" 'tmux-secondmate=kill <tmux> <@42>;treehouse' \
+    "secondmate metadata cleanup tried to return its persistent home"
+  pass "metadata publication failure cleans exact backend endpoints and applicable worktrees"
 }
 
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
@@ -723,6 +802,7 @@ test_pi_signed_threads_shared_pi_profile_and_preserves_identity
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_metadata_writer_propagates_output_failure
 test_metadata_publication_is_atomic
+test_metadata_failure_cleanup_targets_each_backend_exactly
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags
 test_claude_forwards_firstmate_config_dir_when_set
