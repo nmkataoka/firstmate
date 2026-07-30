@@ -21,8 +21,6 @@
 # delete is available only through teardown.
 # Both paths perform a fresh refuse-default check immediately before each
 # destructive call.
-# A nonzero stop result counts as complete only when bounded named-session reads
-# confirm that the exact lab session reached running=false.
 # Provision records the running default session as a fleet-state tripwire and
 # teardown requires that record to be identical afterward.
 set -u
@@ -244,7 +242,7 @@ fm_herdr_lab_verify_tripwire() { # <session>
 }
 
 fm_herdr_lab_stop() { # <session>
-  local name=$1 tripwire output status=0 sessions running attempt=0
+  local name=$1 tripwire
   fm_herdr_lab_validate_name "$name" || return 1
   tripwire=$(fm_herdr_lab_tripwire_path "$name")
   [ -f "$tripwire" ] || {
@@ -252,21 +250,7 @@ fm_herdr_lab_stop() { # <session>
     return 1
   }
   fm_herdr_lab_refuse_if_default "$name" || return 1
-  output=$(fm_herdr_lab_raw "$name" session stop "$name" --json 2>&1) || status=$?
-  if [ "$status" -eq 0 ]; then
-    [ -z "$output" ] || printf '%s\n' "$output"
-    return 0
-  fi
-  while [ "$attempt" -lt 20 ]; do
-    sessions=$(fm_herdr_lab_session_list "$name" 2>/dev/null) || break
-    running=$(printf '%s' "$sessions" | jq -r --arg name "$name" \
-      '.sessions[]? | select(.name == $name) | .running' 2>/dev/null)
-    [ "$running" != false ] || return 0
-    sleep 0.2
-    attempt=$((attempt + 1))
-  done
-  [ -z "$output" ] || printf '%s\n' "$output" >&2
-  return "$status"
+  fm_herdr_lab_raw "$name" session stop "$name" --json
 }
 
 fm_herdr_lab_teardown() { # <session>
