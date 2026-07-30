@@ -768,6 +768,88 @@ test_metadata_failure_cleanup_targets_each_backend_exactly() {
   pass "metadata publication failure cleans exact backend endpoints and applicable worktrees"
 }
 
+test_orca_abort_cleanup_retires_artifacts_only_after_worktree_removal() {
+  local source case_dir state worktree task_tmp test_home grok_home token
+  source=$(sed -n '/^spawn_task_artifact_cleanup()/,/^}/p' "$SPAWN")
+  source="$source
+$(sed -n '/^spawn_metadata_failure_cleanup()/,/^}/p' "$SPAWN")
+$(sed -n '/^spawn_abort_cleanup()/,/^}/p' "$SPAWN")"
+  case_dir="$TMP_ROOT/orca-abort-cleanup"
+  state="$case_dir/state"
+  worktree="$case_dir/worktree"
+  task_tmp="$case_dir/task-tmp"
+  test_home="$case_dir/home"
+  grok_home="$case_dir/grok-home"
+  token=fm.abcdefghijkl
+  mkdir -p "$state" "$worktree/.claude" "$task_tmp" \
+    "$grok_home/hooks/fm-turn-end.d" "$test_home/.kimi-code/fm-turn-end.d"
+  touch "$worktree/.claude/settings.local.json" "$state/task.turn-ended" \
+    "$grok_home/hooks/fm-turn-end.d/$token"
+  printf '%s\n' "$token" > "$state/task.grok-turnend-token"
+
+  SPAWN_ABORT_SOURCE="$source" STATE="$state" WT="$worktree" ID=task \
+    TASK_TMP="$task_tmp" HOME="$test_home" GROK_HOME="$grok_home" bash -c '
+      set -e
+      eval "$SPAWN_ABORT_SOURCE"
+      fm_backend_kill() { :; }
+      fm_backend_remove_worktree() { return 0; }
+      BACKEND=orca KIND=ship ORCA_ABORT_CLEANUP=1 ORCA_TERMINAL=term-1
+      ORCA_WORKTREE_ID=wt-1 SPAWN_METADATA_ABORT_CLEANUP=1
+      HERDR_PROJECTION_ABORT_CLEANUP=0 HERDR_PRESENTATION_ORDER_LOCK_HELD=0
+      SPAWN_TASK_LOCK_HELD=0 CONFIG_INHERIT_LOCK_HELD=0
+      spawn_abort_cleanup
+    '
+
+  assert_absent "$worktree/.claude/settings.local.json" \
+    "successful Orca abort retained its worktree hook"
+  assert_absent "$state/task.turn-ended" "successful Orca abort retained task state"
+  assert_absent "$grok_home/hooks/fm-turn-end.d/$token" \
+    "successful Orca abort retained its authorization token"
+  assert_absent "$task_tmp" "successful Orca abort retained its task temp root"
+
+  mkdir -p "$task_tmp"
+  touch "$worktree/.claude/settings.local.json" "$state/task.turn-ended"
+  SPAWN_ABORT_SOURCE="$source" STATE="$state" WT="$worktree" ID=task \
+    TASK_TMP="$task_tmp" HOME="$test_home" GROK_HOME="$grok_home" \
+    PROJ_ABS="$case_dir/project" HARNESS=codex W=fm-task bash -c '
+      set -e
+      eval "$SPAWN_ABORT_SOURCE"
+      fm_backend_kill() { :; }
+      fm_backend_remove_worktree() { return 1; }
+      BACKEND=orca KIND=ship ORCA_ABORT_CLEANUP=1 ORCA_TERMINAL=term-1
+      ORCA_WORKTREE_ID=wt-1 SPAWN_METADATA_ABORT_CLEANUP=1
+      HERDR_PROJECTION_ABORT_CLEANUP=0 HERDR_PRESENTATION_ORDER_LOCK_HELD=0
+      SPAWN_TASK_LOCK_HELD=0 CONFIG_INHERIT_LOCK_HELD=0
+      spawn_abort_cleanup
+    '
+  assert_present "$worktree/.claude/settings.local.json" \
+    "failed Orca removal discarded its recovery hook"
+  assert_present "$state/task.turn-ended" "failed Orca removal discarded task state"
+  assert_present "$task_tmp" "failed Orca removal discarded its recovery temp root"
+  assert_present "$state/task.meta" "failed Orca removal did not publish recovery metadata"
+  pass "Orca abort cleanup retires task artifacts only after confirmed worktree removal"
+}
+
+test_abort_cleanup_releases_locks_after_cleanup_failure() {
+  local source log
+  source=$(sed -n '/^spawn_abort_cleanup()/,/^}/p' "$SPAWN")
+  log="$TMP_ROOT/abort-cleanup-locks.log"
+  SPAWN_ABORT_SOURCE="$source" CLEANUP_LOG="$log" bash -c '
+    set -e
+    eval "$SPAWN_ABORT_SOURCE"
+    spawn_metadata_failure_cleanup() { return 1; }
+    fm_lock_release() { printf "%s\n" "$1" >> "$CLEANUP_LOG"; }
+    BACKEND=tmux ORCA_ABORT_CLEANUP=0 SPAWN_METADATA_ABORT_CLEANUP=1
+    HERDR_PROJECTION_ABORT_CLEANUP=0 HERDR_PRESENTATION_ORDER_LOCK_HELD=0
+    SPAWN_TASK_LOCK_HELD=1 SPAWN_TASK_LOCK=task-lock
+    CONFIG_INHERIT_LOCK_HELD=1 CONFIG_INHERIT_LOCK=config-lock
+    spawn_abort_cleanup
+  '
+  assert_grep 'task-lock' "$log" "cleanup failure prevented task-lock release"
+  assert_grep 'config-lock' "$log" "cleanup failure prevented config-lock release"
+  pass "spawn abort cleanup releases locks after best-effort cleanup failures"
+}
+
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
   local rec id sm out status launch
   id=profile-pi-signed-secondmate-z8d
@@ -901,6 +983,8 @@ test_metadata_publication_is_atomic
 test_metadata_failure_cleanup_removes_task_artifacts
 test_metadata_failure_cleanup_preserves_secondmate_artifacts
 test_metadata_failure_cleanup_targets_each_backend_exactly
+test_orca_abort_cleanup_retires_artifacts_only_after_worktree_removal
+test_abort_cleanup_releases_locks_after_cleanup_failure
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags
 test_claude_forwards_firstmate_config_dir_when_set

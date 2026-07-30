@@ -278,14 +278,14 @@ spawn_task_artifact_cleanup() {
   local token
   if [ -n "${WT:-}" ] && [ -d "$WT" ]; then
     rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
-      "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
+      "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend" || true
   fi
   token=$(cat "$STATE/$ID.grok-turnend-token" 2>/dev/null || true)
   case "$token" in
     fm.????????????)
       case "$token" in
         *[!A-Za-z0-9._-]*) ;;
-        *) rm -f "${GROK_HOME:-$HOME/.grok}/hooks/fm-turn-end.d/$token" ;;
+        *) rm -f "${GROK_HOME:-$HOME/.grok}/hooks/fm-turn-end.d/$token" || true ;;
       esac
       ;;
   esac
@@ -294,12 +294,12 @@ spawn_task_artifact_cleanup() {
     fm.????????????)
       case "$token" in
         *[!A-Za-z0-9._-]*) ;;
-        *) rm -f "$HOME/.kimi-code/fm-turn-end.d/$token" ;;
+        *) rm -f "$HOME/.kimi-code/fm-turn-end.d/$token" || true ;;
       esac
       ;;
   esac
   rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.pi-ext.ts" \
-    "$STATE/$ID.grok-turnend-token" "$STATE/$ID.kimi-turnend-token"
+    "$STATE/$ID.grok-turnend-token" "$STATE/$ID.kimi-turnend-token" || true
 }
 
 spawn_metadata_failure_cleanup() {  # <projected-herdr-cleanup>
@@ -324,14 +324,14 @@ spawn_metadata_failure_cleanup() {  # <projected-herdr-cleanup>
   esac
   if [ "$BACKEND" != orca ]; then
     if [ "$KIND" != secondmate ]; then
-      spawn_task_artifact_cleanup
+      spawn_task_artifact_cleanup || true
       if [ -n "${WT:-}" ] && [ -d "$WT" ]; then
         if ! ( cd "$PROJ_ABS" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
           echo "warning: failed to return worktree after metadata publication failure: $WT" >&2
         fi
       fi
     fi
-    [ -z "${TASK_TMP:-}" ] || rm -rf "$TASK_TMP"
+    [ -z "${TASK_TMP:-}" ] || rm -rf "$TASK_TMP" || true
   fi
 }
 
@@ -361,7 +361,10 @@ spawn_abort_cleanup() {
       fm_backend_kill orca "$ORCA_TERMINAL" 2>/dev/null || true
     fi
     if [ -n "${ORCA_WORKTREE_ID:-}" ]; then
-      if ! fm_backend_remove_worktree orca "$ORCA_WORKTREE_ID" 2>/dev/null; then
+      if fm_backend_remove_worktree orca "$ORCA_WORKTREE_ID" 2>/dev/null; then
+        spawn_task_artifact_cleanup || true
+        [ -z "${TASK_TMP:-}" ] || rm -rf "$TASK_TMP" || true
+      else
         mkdir -p "$STATE" 2>/dev/null || true
         if [ -d "$STATE" ]; then
           {
@@ -383,7 +386,7 @@ spawn_abort_cleanup() {
       fi
     fi
   fi
-  spawn_metadata_failure_cleanup "$projected_herdr_cleanup"
+  spawn_metadata_failure_cleanup "$projected_herdr_cleanup" || true
   if [ "$SPAWN_TASK_LOCK_HELD" = 1 ]; then
     SPAWN_TASK_LOCK_HELD=0
     fm_lock_release "$SPAWN_TASK_LOCK" || true

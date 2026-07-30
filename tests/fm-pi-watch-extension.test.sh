@@ -101,6 +101,8 @@ test_tracked_extension_present_and_self_hashing() {
   assert_contains "$text" "type SessionGeneration" "tracked extension lacks an explicit session-generation owner"
   assert_contains "$text" "function activateGeneration" "tracked extension does not activate a live generation for replacement sessions"
   assert_contains "$text" "function generationIsLive" "tracked extension does not gate arm mutations on the live generation"
+  assert_contains "$text" "finally {" "tracked extension does not release restoration ownership after rejection"
+  assert_contains "$text" "owner.restoring = false" "tracked extension does not clear restoration ownership"
   assert_contains "$text" "watcher: not armed - Pi session is shutting down" "tracked extension missing the terminal shutdown refusal"
   assert_not_contains "$text" "[ -f config/x-mode.env ]" "tracked extension kept a repo-relative x-mode config path"
   pass "Pi primary watcher extension is tracked, self-hashing, and self-locating"
@@ -1251,6 +1253,8 @@ test_opencode_primary_watch_plugin_static_wiring() {
   assert_contains "$text" "sessionOwnsLock" "OpenCode plugin does not gate arm attempts on the session lock"
   assert_contains "$text" 'fm-watch-arm.sh" --restart' "OpenCode plugin does not restart into its own watcher child"
   assert_contains "$text" 'setArmStatus("external")' "OpenCode plugin still treats an external healthy watcher as armed"
+  assert_contains "$text" "rememberWakeRecipient" "OpenCode plugin does not track the latest live wake recipient"
+  assert_contains "$text" "restorationInFlight = null" "OpenCode plugin does not release rejected restoration ownership"
   pass "OpenCode primary watcher plugin has the verified TUI wake wiring"
 }
 
@@ -2202,6 +2206,205 @@ EOF
   pass "OpenCode healthy arm output does not suppress the turn-end guard"
 }
 
+test_pi_stable_arm_resets_retry_budget() {
+  local repo home plugin log release stop out status
+  repo="$TMP_ROOT/pi-stable-retry-root"
+  home="$TMP_ROOT/pi-stable-retry-home"
+  log="$TMP_ROOT/pi-stable-retry.log"
+  release="$TMP_ROOT/pi-stable-retry.release"
+  stop="$TMP_ROOT/pi-stable-retry.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm\n' >> "${FM_ARM_LOG:?}"
+count=$(wc -l < "$FM_ARM_LOG" | tr -d '[:space:]')
+if [ "$count" -eq 1 ]; then exit 0; fi
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+if [ "$count" -eq 2 ]; then
+  while [ ! -e "$FM_RELEASE_FILE" ]; do sleep 0.01; done
+  exit 0
+fi
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.01; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" \
+    FM_RELEASE_FILE="$release" FM_STOP_FILE="$stop" FM_WATCH_REARM_RETRY_BASE_MS=5 \
+    FM_WATCH_REARM_RETRY_MAX_MS=20 FM_WATCH_REARM_RETRY_LIMIT=1 node --input-type=module 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const handlers = new Map();
+let tool;
+const prompts = [];
+const pi = {
+  on(event, handler) { handlers.set(event, handler); },
+  registerCommand() {},
+  registerTool(candidate) { if (candidate.name === "fm_watch_arm_pi") tool = candidate; },
+  sendUserMessage: async (message) => { prompts.push(message); },
+  events: { on() {} },
+};
+const rows = () => existsSync(process.env.FM_ARM_LOG)
+  ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split(/\n/).filter(Boolean).length
+  : 0;
+async function waitFor(predicate, label) {
+  for (let i = 0; i < 500; i += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timeout waiting for ${label}`);
+}
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+await handlers.get("session_start")?.({}, {});
+await tool.execute("arm", {}, undefined, undefined, {});
+await waitFor(() => rows() >= 2, "stable retry arm");
+await new Promise((resolve) => setTimeout(resolve, 80));
+writeFileSync(process.env.FM_RELEASE_FILE, "release\n");
+await waitFor(() => rows() >= 3, "post-stability retry");
+if (prompts.some((message) => String(message).includes("after 1 retries"))) {
+  throw new Error(`stable arm did not reset retry budget: ${prompts.join(" | ")}`);
+}
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi stable arm must reset the continuity retry budget"
+  [ -z "$out" ] || fail "Pi stable-retry test printed output: $out"
+  pass "Pi stable arm resets the continuity retry budget"
+}
+
+test_opencode_successor_uses_latest_session_recipient() {
+  local plugin repo home log release stop out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo="$TMP_ROOT/opencode-latest-recipient-root"
+  home="$TMP_ROOT/opencode-latest-recipient-home"
+  log="$TMP_ROOT/opencode-latest-recipient.log"
+  release="$TMP_ROOT/opencode-latest-recipient.release"
+  stop="$TMP_ROOT/opencode-latest-recipient.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm\n' >> "${FM_ARM_LOG:?}"
+count=$(wc -l < "$FM_ARM_LOG" | tr -d '[:space:]')
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+if [ "$count" -eq 1 ]; then
+  while [ ! -e "$FM_RELEASE_FILE" ]; do sleep 0.01; done
+  printf 'signal: recipient handoff\n'
+  exit 0
+fi
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.01; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" \
+    FM_RELEASE_FILE="$release" FM_STOP_FILE="$stop" node 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const recipients = [];
+const client = { session: { promptAsync: async (request) => { recipients.push(request.path.id); } } };
+const hooks = await (await import(pathToFileURL(process.env.PLUGIN).href)).FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-old" } } });
+for (let i = 0; i < 500 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-new" } } });
+writeFileSync(process.env.FM_RELEASE_FILE, "release\n");
+for (let i = 0; i < 500 && recipients.length === 0; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+if (recipients[0] !== "session-new") {
+  throw new Error(`wake targeted ${recipients[0] || "nothing"} instead of the latest session`);
+}
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode successor wakes must target the latest active session"
+  [ -z "$out" ] || fail "OpenCode latest-recipient test printed output: $out"
+  pass "OpenCode successor wakes target the latest active session"
+}
+
+test_opencode_stable_arm_resets_retry_budget() {
+  local plugin repo home log release stop out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo="$TMP_ROOT/opencode-stable-retry-root"
+  home="$TMP_ROOT/opencode-stable-retry-home"
+  log="$TMP_ROOT/opencode-stable-retry.log"
+  release="$TMP_ROOT/opencode-stable-retry.release"
+  stop="$TMP_ROOT/opencode-stable-retry.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm\n' >> "${FM_ARM_LOG:?}"
+count=$(wc -l < "$FM_ARM_LOG" | tr -d '[:space:]')
+if [ "$count" -eq 1 ]; then exit 0; fi
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+if [ "$count" -eq 2 ]; then
+  while [ ! -e "$FM_RELEASE_FILE" ]; do sleep 0.01; done
+  exit 0
+fi
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.01; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" \
+    FM_RELEASE_FILE="$release" FM_STOP_FILE="$stop" FM_WATCH_REARM_RETRY_BASE_MS=5 \
+    FM_WATCH_REARM_RETRY_MAX_MS=20 FM_WATCH_REARM_RETRY_LIMIT=1 node 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const prompts = [];
+const client = { session: { promptAsync: async (request) => { prompts.push(request.body.parts[0].text); } } };
+const rows = () => existsSync(process.env.FM_ARM_LOG)
+  ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split(/\n/).filter(Boolean).length
+  : 0;
+async function waitFor(predicate, label) {
+  for (let i = 0; i < 500; i += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timeout waiting for ${label}`);
+}
+const hooks = await (await import(pathToFileURL(process.env.PLUGIN).href)).FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
+await waitFor(() => rows() >= 2, "stable retry arm");
+await new Promise((resolve) => setTimeout(resolve, 80));
+writeFileSync(process.env.FM_RELEASE_FILE, "release\n");
+await waitFor(() => rows() >= 3, "post-stability retry");
+if (prompts.some((message) => message.includes("after 1 retries"))) {
+  throw new Error(`stable arm did not reset retry budget: ${prompts.join(" | ")}`);
+}
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode stable arm must reset the continuity retry budget"
+  [ -z "$out" ] || fail "OpenCode stable-retry test printed output: $out"
+  pass "OpenCode stable arm resets the continuity retry budget"
+}
+
 test_tracked_extension_present_and_self_hashing
 test_spawn_template_mentions_pi_watch_placeholder
 test_pi_extension_reports_external_healthy_watcher
@@ -2214,6 +2417,7 @@ test_pi_unretired_successor_falls_back_without_retry
 test_pi_late_unretired_close_resumes_supervision
 test_pi_empty_close_retries_instead_of_disappearing
 test_pi_established_empty_close_honors_retry_limit
+test_pi_stable_arm_resets_retry_budget
 test_pi_actionable_close_rechecks_session_lock
 test_pi_arm_distinguishes_session_lock_ownership
 test_pi_session_transition_generation_owner
@@ -2226,12 +2430,14 @@ test_opencode_primary_watch_plugin_sources_effective_config
 test_opencode_primary_watch_plugin_requires_session_lock
 test_opencode_watch_arm_coordinator_respects_primary_scope
 test_opencode_primary_watch_plugin_rearms_after_wake
+test_opencode_successor_uses_latest_session_recipient
 test_opencode_pre_ready_actionable_close_preserves_its_successor
 test_opencode_hung_successor_falls_back_to_typed_wake
 test_opencode_unretired_successor_falls_back_without_retry
 test_opencode_late_unretired_close_resumes_supervision
 test_opencode_empty_close_retries_instead_of_disappearing
 test_opencode_established_empty_close_honors_retry_limit
+test_opencode_stable_arm_resets_retry_budget
 test_opencode_actionable_close_rechecks_session_lock
 test_opencode_watch_arm_coordinates_with_turnend_guard
 test_opencode_healthy_arm_output_does_not_suppress_guard
