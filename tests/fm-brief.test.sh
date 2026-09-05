@@ -895,6 +895,34 @@ test_ship_screenshot_guidance() {
   pass "fm-brief.sh: every ship mode carries visual PR evidence guidance"
 }
 
+test_resolution_verb_override_renders_all_brief_scaffolds() {
+  local home kind id brief closed_line resolved_line
+  home="$TMP_ROOT/resolution-verb-home"
+  closed_line="\`closed: {how it cleared}\`"
+  resolved_line="\`resolved: {how it cleared}\`"
+  mkdir -p "$home/data"
+  for kind in secondmate scout ship; do
+    id="brief-resolution-$kind"
+    case "$kind" in
+      secondmate)
+        FM_HOME="$home" FM_CLASSIFY_RESOLVE_VERB=closed FM_SECONDMATE_CHARTER=charter \
+          FM_SECONDMATE_SCOPE=scope "$ROOT/bin/fm-brief.sh" "$id" --secondmate --no-projects >/dev/null 2>&1 ;;
+      scout)
+        FM_HOME="$home" FM_CLASSIFY_RESOLVE_VERB=closed \
+          "$ROOT/bin/fm-brief.sh" "$id" sample --scout >/dev/null 2>&1 ;;
+      ship)
+        FM_HOME="$home" FM_CLASSIFY_RESOLVE_VERB=closed \
+          "$ROOT/bin/fm-brief.sh" "$id" sample --mode direct-PR >/dev/null 2>&1 ;;
+    esac
+    brief="$home/data/$id/brief.md"
+    assert_grep "$closed_line" "$brief" \
+      "$kind brief did not render the configured resolution verb"
+    assert_no_grep "$resolved_line" "$brief" \
+      "$kind brief still instructs the default resolution verb"
+  done
+  pass "fm-brief.sh: custom resolution verb renders in every scaffold"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -920,3 +948,4 @@ test_scout_and_secondmate_scaffold
 test_review_flag_direct_pr
 test_review_flag_refusals
 test_ship_screenshot_guidance
+test_resolution_verb_override_renders_all_brief_scaffolds
