@@ -4026,6 +4026,34 @@ test_beacon_stays_fresh_while_absorbing() {
   pass "the liveness beacon stays fresh while the watcher absorbs benign wakes (fm-guard never false-alarms)"
 }
 
+# A watcher can spend its signal-grace interval after the poll's normal beacon
+# touch and before reporting a wake. Re-stamp at fire time so a sleep during that
+# interval cannot make a healthy handoff look stale to the guard.
+test_beacon_stamped_at_fire() {
+  local dir state fakebin out status_file pid i m now
+  dir=$(make_case beacon-stamped-at-fire); state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"
+  status_file="$state/task.status"
+  printf 'needs-decision: pick A or B\n' > "$status_file"
+  PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=3 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  i=0
+  while [ "$i" -lt 30 ] && [ ! -e "$state/.last-watcher-beat" ]; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  [ -e "$state/.last-watcher-beat" ] || { reap "$pid"; fail "watcher never touched the beacon"; }
+  sleep 0.5
+  touch -t 202001010000 "$state/.last-watcher-beat"
+  wait_for_exit "$pid" 100 || fail "watcher did not fire for an actionable signal while testing the fire-time beacon stamp"
+  grep -F "signal: $status_file" "$out" >/dev/null || fail "watcher did not print the actionable signal reason"
+  m=$(file_mtime "$state/.last-watcher-beat")
+  now=$(date +%s)
+  [ -n "$m" ] || fail "beacon missing after the fire"
+  [ "$(( now - m ))" -lt 30 ] || fail "beacon was not re-stamped at fire time (age $(( now - m ))s)"
+  pass "wake() stamps the liveness beacon at fire time"
+}
+
 # --- afk coherence: the daemon owns triage; the watcher does not double-triage ---
 
 test_afk_signal_records_heartbeat_endpoint() {
@@ -4197,6 +4225,7 @@ test_heartbeat_no_change_absorbed
 test_heartbeat_backstop_surfaces_unsurfaced_status
 test_heartbeat_backstop_surfaces_a_masked_status
 test_beacon_stays_fresh_while_absorbing
+test_beacon_stamped_at_fire
 test_afk_signal_records_heartbeat_endpoint
 test_afk_present_reverts_watcher_to_one_shot
 test_afk_paused_changed_pane_hands_off_plain_stale
