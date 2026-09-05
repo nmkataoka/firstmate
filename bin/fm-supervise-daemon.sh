@@ -1295,7 +1295,7 @@ is_wake_reason() {  # <reason>
 # --- dispatch one wake reason to self-handle or escalate --------------------
 # Side effects: logging, marker records, escalation buffer appends.
 handle_wake() {  # <reason> <state>
-  local reason=$1 state=$2 decision action distilled task last stale_detail
+  local reason=$1 state=$2 decision action distilled task last stale_detail separate_context=0
   local capture="$state/.subsuper-classified-end.$$" span_record='' span_rc='' endpoint ident rest sig marker
   local kind="" arg="" classification_failed=0 span_failure_repeat=0
   : > "$capture" || return 1
@@ -1308,7 +1308,10 @@ handle_wake() {  # <reason> <state>
     signal:*) kind=signal; arg="${reason#signal: }"
               decision=$(FM_STATUS_SPAN_ENDPOINT_FILE="$capture" classify_signal "$arg" "$state") ;;
     stale:*)  kind=stale; arg="${reason#stale: }"; stale_detail="${arg#"$arg"}"
-              case "$arg" in *" ("*) stale_detail="${arg#*" ("}"; arg="${arg%% \(*}" ;; esac
+              case "$arg" in
+                *$'\t'*) stale_detail=${arg#*$'\t'}; arg=${arg%%$'\t'*}; separate_context=1 ;;
+                *" ("*) stale_detail="${arg#*" ("}"; arg="${arg%% \(*}" ;;
+              esac
               task=$(window_to_task "$arg" "$state")
               if [ -n "$task" ]; then
                 span_record=$(status_span_first_actionable_record "$state/$task.status" \
@@ -1336,6 +1339,9 @@ handle_wake() {  # <reason> <state>
                 decision="self|unreadable status span already reported for $task"
               else
                 decision=$(classify_stale "$arg" "$state" "$span_record" "$span_rc")
+              fi
+              if [ "$separate_context" -eq 1 ] && [ -n "$stale_detail" ]; then
+                decision="escalate|stale + actionable context: $stale_detail"
               fi
               # An enriched wedge reason carries the watcher's own escalation count
               # and its "do not re-absorb on the run-step/pane state alone" demand,
