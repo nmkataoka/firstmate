@@ -269,6 +269,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": "crew/review/pr-description-writing.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": "crew/review/review-procedure.md",
       "audience": "agent-runtime"
     },
