@@ -1759,6 +1759,18 @@ test_classify_signal_dedup_against_scan() {
   pass "classify_signal dedupes against the catch-all scan seen marker"
 }
 
+test_handle_wake_escalates_actionable_stale_context() {
+  local dir state win
+  dir=$(make_supercase stale-actionable-context)
+  state="$dir/state"
+  win="default:w1:p2"
+  fm_write_meta "$state/herdr-no-status.meta" "window=$win" "backend=herdr"
+  FM_STATE_OVERRIDE="$state" handle_wake "stale: $win"$'\t'"herdr: agent blocked - waiting on human" "$state"
+  grep -F "herdr: agent blocked - waiting on human" "$state/.subsuper-escalations" >/dev/null \
+    || fail "actionable Herdr context without a status entry was not escalated"
+  pass "handle_wake preserves the exact stale target and separate actionable context"
+}
+
 test_classify_stale_dedup_against_signal() {
   # If the signal path already escalated a status (seen marker matches),
   # classify_stale must self-handle to avoid a duplicate in the digest.
@@ -2690,6 +2702,7 @@ test_transient_unreadable_signal_recovers_without_advancing
 test_permission_recovery_reclassifies_catchall_status
 test_permanent_classification_failure_is_reported_and_acknowledged
 test_catchall_scan_surfaces_a_masked_event
+test_handle_wake_escalates_actionable_stale_context
 test_classify_stale_dedup_against_signal
 test_afk_nonterminal_working_merged_keeps_wedge_aging
 test_afk_genuine_done_still_terminal_stale
