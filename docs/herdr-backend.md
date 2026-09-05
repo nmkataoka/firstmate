@@ -303,7 +303,7 @@ It never splits the captain's active tab and never uses shell `&`.
 Recovery reconciles only the recorded exact id.
 
 On stop, the daemon receives termination while `state/.afk` still exists so its final flush can run, the recorded terminal is closed, and the AFK flag is removed last.
-A fresh entry clears stale transient escalation caches, while durable queue and task records remain authoritative.
+A fresh entry preserves buffered escalations and their first-append timestamp for delivery after a daemon restart, while clearing only the stale wedge marker.
 
 ## Destructive lab safety
 
