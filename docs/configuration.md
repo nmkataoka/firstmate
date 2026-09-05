@@ -380,6 +380,13 @@ Malformed JSON, an empty or malformed rule/default array, an unverified harness,
 While the file remains present, no crewmate or scout spawn may proceed without an explicit resolved harness; malformed configuration must be reported and corrected rather than selected around.
 Secondmate homes inherit this file from the primary, so a secondmate's own crewmates apply the same dispatch profile behavior.
 
+## Post-implementation review (crew/review/, config/review.env)
+
+This fork keeps a narrow dual-review exception for selected direct-PR ship tasks.
+`bin/fm-brief.sh --review=<full|simple>` pins the intake-selected tier and routes the worker to the tracked procedure under `crew/review/`.
+`bin/fm-review-launch.sh` owns reviewer launch mechanics and reads optional local, gitignored `config/review.env` overrides for models, effort, flags, and repository guideline links.
+An absent file uses the defaults documented in [`docs/examples/review.env`](examples/review.env), and the file is not inherited into secondmate homes.
+
 ## Toolchain
 
 On session start the first mate detects what its required toolchain is missing or too old and lists each problem with either an exact install command or manual instructions.

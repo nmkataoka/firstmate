@@ -846,6 +846,39 @@ test_scout_and_secondmate_scaffold() {
   pass "fm-brief: scout and secondmate code paths still scaffold well-formed briefs"
 }
 
+test_review_flag_direct_pr() {
+  local home id brief
+  home="$TMP_ROOT/review-home"
+  mkdir -p "$home/data"
+  id="brief-review-c1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --mode direct-PR --review=full >/dev/null 2>&1 \
+    || fail "fm-brief.sh --review=full on a direct-PR task should succeed"
+  brief="$home/data/$id/brief.md"
+  assert_grep "# Post-implementation review" "$brief" "review brief missing the review section"
+  assert_grep "TIER=\`full\`" "$brief" "review brief does not pin the chosen tier"
+  assert_grep "$ROOT/crew/review/review-procedure.md" "$brief" \
+    "review brief does not point at the tracked crew procedure"
+  assert_grep "review-only pipeline run the procedure itself specifies" "$brief" \
+    "review brief must sanction the procedure's review-only no-mistakes run"
+  assert_no_grep "EOF" "$brief" "review brief leaked a heredoc EOF marker"
+  pass "fm-brief.sh: --review carries the selected tier and review procedure"
+}
+
+test_review_flag_refusals() {
+  local home status
+  home="$TMP_ROOT/review-refuse-home"
+  mkdir -p "$home/data"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d1 direct-proj --mode direct-PR --review >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "bare --review should be refused"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d2 direct-proj --mode direct-PR --review=fancy >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "an unknown review tier should be refused"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d3 direct-proj --scout --review=simple >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "--review on a scout brief should be refused"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-review-d4 direct-proj --mode no-mistakes --review=simple >/dev/null 2>&1; status=$?
+  expect_code 1 "$status" "--review outside direct-PR should be refused"
+  pass "fm-brief.sh: --review refuses unsupported tiers, kinds, and modes"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -868,3 +901,5 @@ test_secondmate_directory_paths_are_absolute_and_output_is_stable
 test_pause_verb_override_renders_all_brief_scaffolds
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
+test_review_flag_direct_pr
+test_review_flag_refusals

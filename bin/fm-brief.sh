@@ -12,11 +12,13 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab] [--review=<full|simple>]
 #        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
+#   --review=<full|simple> applies only to direct-PR ship tasks and carries the
+#   intake-selected post-implementation dual-review tier into the brief.
 #   --secondmate writes a persistent secondmate charter. The project list
 #   is cloned into the secondmate home, while the natural-language scope
 #   tells the main firstmate when to route work there; routine churn stays in its own home;
@@ -118,6 +120,7 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+REVIEW_TIER=
 POS=()
 want_value=
 for a in "$@"; do
@@ -139,6 +142,8 @@ for a in "$@"; do
     --no-projects) NO_PROJECTS=1 ;;
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
+    --review|--review=) echo "error: --review requires a tier: --review=full or --review=simple" >&2; exit 1 ;;
+    --review=*) REVIEW_TIER=${a#--review=} ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -165,6 +170,17 @@ if [ "$KIND" = ship ]; then
 elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
+fi
+if [ -n "$REVIEW_TIER" ]; then
+  [ "$KIND" = ship ] || { echo "error: --review applies only to ship briefs, not $KIND" >&2; exit 1; }
+  case "$REVIEW_TIER" in
+    full|simple) ;;
+    *) echo "error: invalid review tier '$REVIEW_TIER' (use full or simple)" >&2; exit 1 ;;
+  esac
+  [ "$MODE" = direct-PR ] || {
+    echo "error: --review is verified only for direct-PR ship tasks" >&2
+    exit 1
+  }
 fi
 ID=${POS[0]}
 
@@ -425,6 +441,22 @@ case "$MODE" in
     ;;
 esac
 DOD=$(fm_dod_block "$MODE" "$ID") || exit 1
+if [ -n "$REVIEW_TIER" ]; then
+IFS= read -r -d '' DOD <<EOF || true
+# Definition of done
+This project ships **direct-PR**: you raise the PR yourself; the full no-mistakes pipeline does not gate it.
+The task is complete only when committed on your branch and the post-implementation review below is resolved.
+When implementation is committed, push your branch and open a PR with \`gh-axi\`, then run the review procedure below before reporting done.
+Do NOT run /no-mistakes; the only sanctioned no-mistakes use in this task is the review-only pipeline run the procedure itself specifies.
+The configured merge authority reviews and merges the PR; firstmate relays the outcome.
+
+# Post-implementation review
+Firstmate has set the review tier for this task: TIER=\`$REVIEW_TIER\`.
+Follow \`$FM_ROOT/crew/review/review-procedure.md\` exactly, with FM=\`$FM_ROOT\` and the tier above.
+Use the PR-description guidance it references when you open the PR.
+Its Finish section defines the done report: \`done: PR {url}\` plus a one-line note of any rejected findings.
+EOF
+fi
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.

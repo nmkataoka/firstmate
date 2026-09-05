@@ -221,6 +221,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/pr-review-dispatch/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/quota-array-dispatch/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -255,6 +259,22 @@
     {
       "path": "CONTRIBUTING.md",
       "audience": "maintainer-architecture"
+    },
+    {
+      "path": "crew/review/diff-review.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "crew/review/post-comments.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "crew/review/review-procedure.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": "crew/review/tests-and-comments.md",
+      "audience": "agent-runtime"
     },
     {
       "path": "GROK_BOT.md",
@@ -318,6 +338,10 @@
     },
     {
       "path": "docs/examples/crew-dispatch.json",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/review.env",
       "audience": "operator-example"
     },
     {
