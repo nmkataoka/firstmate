@@ -846,6 +846,22 @@ test_scout_and_secondmate_scaffold() {
   pass "fm-brief: scout and secondmate code paths still scaffold well-formed briefs"
 }
 
+test_ship_screenshot_guidance() {
+  local home id brief mode
+  home="$TMP_ROOT/screenshot-home"
+  mkdir -p "$home/data"
+  for mode in no-mistakes direct-PR local-only; do
+    id="brief-shot-$mode"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" sample --mode "$mode" >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_grep "screenshots under \`$home/data/$id/screenshots/\`" "$brief" \
+      "$mode brief lost the screenshot carve-out"
+    assert_grep "take screenshots per \`$ROOT/crew/review/pr-description-writing.md\`" "$brief" \
+      "$mode brief lost the visual evidence pointer"
+  done
+  pass "fm-brief.sh: every ship mode carries visual PR evidence guidance"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -868,3 +884,4 @@ test_secondmate_directory_paths_are_absolute_and_output_is_stable
 test_pause_verb_override_renders_all_brief_scaffolds
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
+test_ship_screenshot_guidance

@@ -4,6 +4,7 @@
 # Bootstrap prints one block or line per actionable problem, optional verbose
 # BOOTSTRAP_INFO fact, or completed bootstrap no-action fact and is silent when
 # all is well. firstmate consumes the exact 'MISSING: treehouse (install: ...)',
+# 'MISSING: curl (install: ...)', 'MISSING: jq (install: ...)',
 # 'MISSING: tasks-axi (install: ...)', 'MISSING: quota-axi (install: ...)',
 # 'MISSING: gh-axi (install: ...)', 'MISSING: lavish-axi (install: ...)', and
 # 'BOOTSTRAP_INFO: ...' lines, so those contracts are pinned verbatim. The cases
@@ -44,7 +45,7 @@ unset TMUX TMUX_PANE HERDR_ENV HERDR_PANE_ID HERDR_SESSION HERDR_SOCKET_PATH \
 make_fake_toolchain() {
   local dir=$1 fakebin
   fakebin=$(fm_fakebin "$dir")
-  fm_fake_exit0 "$fakebin" tmux node chrome-devtools-axi
+  fm_fake_exit0 "$fakebin" tmux node curl jq chrome-devtools-axi
   fm_fake_version_tool "$fakebin" lavish-axi FM_FAKE_LAVISH_AXI_VERSION 0.1.46
   cat > "$fakebin/gh-axi" <<'SH'
 #!/usr/bin/env bash
@@ -309,6 +310,29 @@ manual backlog backend still requires missing tasks-axi^1^-^1^manual^exact^MISSI
 manual backlog backend suppresses tasks-axi availability^1^0.2.4^1^manual^empty^^
 ROWS
   pass "bootstrap reports treehouse lease + tasks-axi/quota-axi bootstrap contracts"
+}
+
+test_required_screenshot_upload_tools() {
+  local tool case_dir fakebin utility utility_path out
+  for tool in curl jq; do
+    case_dir="$TMP_ROOT/required-$tool"
+    mkdir -p "$case_dir/home/config"
+    printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
+    fakebin=$(make_fake_toolchain "$case_dir")
+    rm -f "$fakebin/$tool"
+    for utility in bash cat date dirname git grep head mkdir mktemp pwd rm sed tail tr uname wc; do
+      utility_path=$(command -v "$utility") || fail "test host must provide $utility"
+      ln -s "$utility_path" "$fakebin/$utility"
+    done
+    out=$(PATH="$fakebin" FM_BACKEND=tmux FM_HOME="$case_dir/home" \
+      FM_ROOT_OVERRIDE="$case_dir/home" FM_BOOTSTRAP_DETECT_ONLY=1 \
+      FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+    printf '%s\n' "$out" | grep -F "MISSING: $tool" >/dev/null \
+      || fail "bootstrap did not require $tool for screenshot evidence uploads"
+    [ "$(printf '%s\n' "$out" | grep -Fc "MISSING: $tool")" = 1 ] \
+      || fail "bootstrap reported missing $tool more than once"
+  done
+  pass "bootstrap requires curl and jq once as universal screenshot-upload tools"
 }
 
 test_no_mistakes_min_version() {
@@ -1149,6 +1173,7 @@ ROWS
 }
 
 test_bootstrap_reporting
+test_required_screenshot_upload_tools
 test_no_mistakes_min_version
 test_gh_axi_min_version
 test_lavish_axi_min_version
