@@ -19,6 +19,7 @@ set -u
 
 LINT="$ROOT/bin/fm-lint.sh"
 INSTALLER="$ROOT/bin/fm-install-shellcheck.sh"
+CI_WORKFLOW="$ROOT/.github/workflows/ci.yml"
 # The pinned version, read from the single source (the one owner itself).
 REQUIRED=$("$LINT" --required-version)
 
@@ -773,6 +774,14 @@ test_pins_an_explicit_version() {
   pass "fm-lint.sh pins an explicit ShellCheck version ($REQUIRED)"
 }
 
+test_ci_pins_tasks_axi_version() {
+  [ "$(grep -Fc 'npm install -g tasks-axi@0.2.5' "$CI_WORKFLOW")" -eq 4 ] \
+    || fail "every CI tasks-axi install must pin version 0.2.5"
+  ! grep -Eq 'npm install -g tasks-axi([[:space:]]|$)' "$CI_WORKFLOW" \
+    || fail "CI still contains an unpinned tasks-axi install"
+  pass "CI pins every tasks-axi install to version 0.2.5"
+}
+
 test_installer_retries_transient_download_failure() {
   local tmp fakebin destination out
   tmp=$(fm_test_tmproot fm-shellcheck-download)
@@ -1295,6 +1304,7 @@ test_ci_defaults_to_full_analysis
 test_ci_rejects_explicit_fast_mode
 test_fast_mode_catches_a_real_lint_defect
 test_pins_an_explicit_version
+test_ci_pins_tasks_axi_version
 test_installer_retries_transient_download_failure
 test_installer_selects_platform_archive_url_and_checksum
 test_installer_rejects_wrong_checksum
