@@ -527,7 +527,7 @@ Use its scaffold as the contract, then fill `## Captain's intent` (`{TASK}`) wit
 Keep additions task-specific rather than repeating lifecycle instructions, and alter generated sections only when the task genuinely differs from the standard shape.
 
 Every ship brief must retain the worktree-isolation assertion and stop if launched in the primary checkout.
-Every ship brief must retain its task-local screenshot carve-out and the visual-PR evidence pointer owned by `crew/review/pr-description-writing.md`.
+Every ship brief must retain its task-local screenshot carve-out and the visual-PR attachment rule owned by `bin/fm-brief.sh`.
 If a ship task touches firstmate's shared tracked material, explicitly require `firstmate-coding-guidelines` before editing.
 If a task will drive Herdr lifecycle behavior, scaffold with `--herdr-lab`; if that need appears after an unguarded scaffold, stop and regenerate rather than adding commands by hand.
 The generated Herdr contract must use a named non-`default` isolated lab and its guarded helper for every lifecycle action.

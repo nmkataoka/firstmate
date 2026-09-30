@@ -49,7 +49,9 @@
 # recorded task metadata cannot drift apart.
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # Ship briefs sanction data/<task-id>/screenshots/ as the only out-of-worktree
-# write beyond the status file and point visual changes to tracked guidance.
+# write beyond the status file, and they own the visual-PR evidence rule: inspect
+# each screenshot for sensitive content, then attach safe ones to the PR with gh's
+# native --attach flag.
 # --mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
 # report rather than a merge, and a charter is not a delivery contract.
 # There is no --yolo flag here. The worker never owns merge decisions, so yolo is
@@ -474,7 +476,11 @@ $ASK_USER_BLOCK
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
-8. If your PR has visual changes, take screenshots per \`$FM_ROOT/crew/review/pr-description-writing.md\`, saved under \`$DATA/$ID/screenshots/\`.
+8. If your change has renderable visual changes, screenshot them (run the app, render the component, or generate
+   the artifact) into \`$DATA/$ID/screenshots/\`, never this worktree, and mention them in your final summary.
+   Inspect every screenshot and crop or redact sensitive content before any upload; keep one you cannot make safe local only.
+   When a PR exists, attach the safe screenshots with gh's native flag, e.g. \`gh pr edit <PR url> --attach '<file>#<alt text>'\`
+   (gh v2.99.0 or newer; gh-axi does not expose \`--attach\`).
 
 $INBOX_SECTION
 
