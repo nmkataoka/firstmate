@@ -856,10 +856,16 @@ test_ship_screenshot_guidance() {
     brief="$home/data/$id/brief.md"
     assert_grep "screenshots under \`$home/data/$id/screenshots/\`" "$brief" \
       "$mode brief lost the screenshot carve-out"
-    assert_grep "take screenshots per \`$ROOT/crew/review/pr-description-writing.md\`" "$brief" \
-      "$mode brief lost the visual evidence pointer"
+    assert_grep "into \`$home/data/$id/screenshots/\`, never this worktree" "$brief" \
+      "$mode brief lost the screenshot save location"
+    assert_grep "crop or redact sensitive content before any upload" "$brief" \
+      "$mode brief lost the sensitive-content check"
+    assert_grep "--attach '<file>#<alt text>'" "$brief" \
+      "$mode brief lost the native gh attachment rule"
+    assert_grep "gh v2.99.0 or newer" "$brief" \
+      "$mode brief lost the gh version note for --attach"
   done
-  pass "fm-brief.sh: every ship mode carries visual PR evidence guidance"
+  pass "fm-brief.sh: every ship mode carries the screenshot carve-out and native gh attachment rule"
 }
 
 test_resolution_verb_override_renders_all_brief_scaffolds() {

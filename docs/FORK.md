@@ -26,10 +26,11 @@ The watcher re-stamps `state/.last-watcher-beat` on every fire so macOS sleep ca
 
 ### Visual PR screenshot evidence
 
-Ship briefs allow task-local screenshots, and the review guidance publishes durable PR evidence through per-PR draft release assets with bootstrap-checked prerequisites.
+Ship briefs allow task-local screenshots and tell a PR with renderable visual changes to attach safe ones with gh's native `--attach` flag.
 
-- Files touched: `AGENTS.md`, `bin/fm-bootstrap.sh`, `bin/fm-brief.sh`, `crew/review/pr-description-writing.md`, `docs/cmux-backend.md`, `docs/configuration.md`, `docs/documentation-audiences.json`, `docs/herdr-backend.md`, `docs/zellij-backend.md`, `tests/fm-bootstrap.test.sh`, and `tests/fm-brief.test.sh`.
-- Upstream status: retained because upstream ship briefs and review guidance had no equivalent screenshot-evidence workflow at `d6660d7`.
+- Files touched: `AGENTS.md`, `bin/fm-brief.sh`, `docs/configuration.md`, and `tests/fm-brief.test.sh`.
+- Upstream status: retained because upstream ship briefs had no equivalent screenshot-evidence rule at `d6660d7`.
+- Reduced on 2026-09-30: the PR-description guide and its per-PR draft-release upload procedure were removed, along with the universal `curl` and `jq` bootstrap requirement that procedure needed, because project repositories own PR-description guidance and gh v2.99.0 attaches images natively.
 
 ### Linked secondmate primary CD guard
 

@@ -257,10 +257,6 @@
       "audience": "maintainer-architecture"
     },
     {
-      "path": "crew/review/pr-description-writing.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": "GROK_BOT.md",
       "audience": "public-product"
     },
